@@ -182,24 +182,52 @@ test('Bilibili login API requires the existing token and reports open and finish
   assert.equal(opened, 2);
 });
 
-test('repository and install APIs require authentication and allowed origin before performing operations', async (t) => {
+test('installed plugin API checks token and origin and permits read-only listing during downloads', async (t) => {
+  let calls = 0;
+  const plugins = [{ id: 'sample', name: '示例下载', type: 'provider', enabled: false }];
+  const token = 'local-plugin-token';
+  const server = new LocalApiServer({ token, downloadRoot: '/tmp/downloads', staticDirectory: path.resolve('extension'),
+    worker: { subscribe: () => () => {}, state: () => ({ running: true }) },
+    pluginManager: { installed: async () => { calls += 1; return { plugins }; } } });
+  t.after(() => server.unsubscribe());
+  for (const [headers, expected] of [[{}, 401],
+    [{ authorization: `Bearer ${token}`, origin: 'https://untrusted.example' }, 403],
+    [{ authorization: `Bearer ${token}`, origin: 'chrome-extension://sample' }, 200]]) {
+    const request = Readable.from([]);
+    Object.assign(request, { method: 'GET', url: '/api/plugins/installed', headers });
+    const response = createResponse();
+    await server.handle(request, response);
+    assert.equal(response.status, expected);
+    if (expected === 200) assert.deepEqual(JSON.parse(response.body), { plugins });
+  }
+  assert.equal(calls, 1);
+});
+
+test('plugin mutations and service reload require authentication and allowed origin before performing operations', async (t) => {
   const calls = [];
   const token = 'local-plugin-token';
   const server = new LocalApiServer({ token, downloadRoot: '/tmp/downloads', staticDirectory: path.resolve('extension'),
-    worker: { subscribe: () => () => {}, withPluginOperation: async (label, action) => { calls.push(label); return action(); } },
+    worker: { subscribe: () => () => {}, withPluginOperation: async (label, action) => { calls.push(label); return action(); },
+      reloadService: async (load) => { calls.push('reload'); await load(); return { pluginsRestartRequired: false }; } },
     pluginManager: { browse: async (body) => ({ repository: body.repository }),
+      setEnabled: async (body) => ({ id: body.id, enabled: body.enabled, restartRequired: true }),
+      loadRuntime: async () => ({}),
       install: async (body) => ({ id: body.id, restartRequired: true }) } });
   t.after(() => server.unsubscribe());
-  for (const route of ['/api/plugins/repository', '/api/plugins/install']) {
+  for (const route of ['/api/plugins/repository', '/api/plugins/install', '/api/plugins/enabled', '/api/service/reload']) {
     for (const [headers, expected] of [[{}, 401],
       [{ authorization: `Bearer ${token}`, origin: 'https://untrusted.example' }, 403],
       [{ authorization: `Bearer ${token}` }, 200]]) {
-      const request = Readable.from([Buffer.from(JSON.stringify({ repository: '/tmp/repo', id: 'sample' }))]);
+      const request = Readable.from([Buffer.from(JSON.stringify({ repository: '/tmp/repo', id: 'sample', enabled: false }))]);
       Object.assign(request, { method: 'POST', url: route, headers });
       const response = createResponse();
       await server.handle(request, response);
       assert.equal(response.status, expected);
+      if (expected === 200 && route.endsWith('/enabled')) assert.deepEqual(JSON.parse(response.body),
+        { id: 'sample', enabled: false, restartRequired: true });
+      if (expected === 200 && route.endsWith('/reload')) assert.deepEqual(JSON.parse(response.body),
+        { state: { pluginsRestartRequired: false } });
     }
   }
-  assert.deepEqual(calls, ['正在读取插件列表', '正在安装插件']);
+  assert.deepEqual(calls, ['正在读取插件列表', '正在安装插件', '正在保存插件配置', 'reload']);
 });

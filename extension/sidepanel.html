@@ -19,12 +19,17 @@
       </div>
     </div>
     <div class="toolbar">
-      <button id="plugins-toggle" class="icon-button" type="button" title="插件安装" aria-label="插件安装"><i data-lucide="puzzle"></i></button>
-      <button id="settings-toggle" class="icon-button" type="button" title="连接设置" aria-label="连接设置"><i data-lucide="settings"></i></button>
+      <button id="plugins-toggle" class="icon-button" type="button" title="插件安装" aria-label="插件安装" aria-controls="plugins-panel" aria-pressed="false"><i data-lucide="puzzle"></i></button>
+      <button id="settings-toggle" class="icon-button" type="button" title="连接设置" aria-label="连接设置" aria-controls="settings-panel" aria-pressed="false"><i data-lucide="settings"></i></button>
     </div>
   </header>
 
-  <section id="settings-panel" class="settings-panel" hidden>
+  <main>
+  <section id="settings-panel" class="settings-panel" aria-labelledby="settings-title" hidden>
+    <div class="section-heading page-heading">
+      <h2 id="settings-title" tabindex="-1">连接设置</h2>
+      <button class="secondary-button" type="button" data-view="dashboard">返回下载</button>
+    </div>
     <label for="endpoint-input">本地服务</label>
     <input id="endpoint-input" type="url" spellcheck="false" value="http://127.0.0.1:43127">
     <label for="token-input">访问令牌</label>
@@ -39,9 +44,21 @@
     <button id="save-settings" class="secondary-button" type="button">保存连接</button>
   </section>
 
-  <main>
     <section id="plugins-panel" class="plugins-panel" aria-labelledby="plugins-title" hidden>
-      <h2 id="plugins-title">插件安装</h2>
+      <div class="section-heading page-heading">
+        <h2 id="plugins-title" tabindex="-1">插件安装</h2>
+        <button class="secondary-button" type="button" data-view="dashboard">返回下载</button>
+      </div>
+      <div class="section-heading">
+        <h3>已安装插件</h3>
+        <div class="toolbar">
+          <button id="service-reload" class="secondary-button" type="button" title="重新读取插件配置并应用更改">重新加载服务</button>
+          <button id="installed-refresh" class="secondary-button" type="button">刷新</button>
+        </div>
+      </div>
+      <p id="installed-status" class="repository-status" role="status" aria-live="polite"></p>
+      <div id="installed-plugins" class="repository-plugins"></div>
+      <h3>从仓库安装</h3>
       <form id="repository-form">
         <label for="repository-input">插件仓库地址</label>
         <input id="repository-input" type="text" spellcheck="false" placeholder="HTTPS、SSH 地址或本地仓库路径" required>
@@ -49,15 +66,16 @@
         <input id="repository-ref" type="text" spellcheck="false" placeholder="留空读取默认分支；也可填写标签或 commit">
         <button id="repository-read" class="secondary-button" type="submit">读取插件列表</button>
       </form>
-      <label class="plugin-enable-option"><input id="plugin-enable" type="checkbox" checked> 安装后启用（重启服务生效）</label>
+      <label class="plugin-enable-option"><input id="plugin-enable" type="checkbox" checked> 安装后启用（重新加载服务生效）</label>
       <p class="login-hint">仅安装可信仓库的插件。</p>
-      <p id="plugins-restart-hint" class="login-hint" hidden>插件文件或启用配置已变更，重启本地服务后生效。</p>
+      <p id="plugins-restart-hint" class="login-hint" hidden>插件配置已变更，点击“重新加载服务”后生效。</p>
       <p id="repository-status" class="repository-status" role="status" aria-live="polite">填写仓库地址后自动读取插件列表。</p>
       <div id="repository-plugins" class="repository-plugins"></div>
     </section>
+    <div id="dashboard-panel">
     <section class="capture-band" aria-labelledby="capture-title">
       <div class="section-heading">
-        <h2 id="capture-title">当前帖子</h2>
+        <h2 id="capture-title" tabindex="-1">当前帖子</h2>
         <span id="site-badge" class="site-badge">未识别</span>
       </div>
       <input id="current-url" class="url-input" type="url" spellcheck="false" aria-label="当前帖子地址">
@@ -93,6 +111,7 @@
       <div id="task-list" class="task-list" aria-live="polite"></div>
       <div id="empty-state" class="empty-state">当前没有任务</div>
     </section>
+    </div>
   </main>
 
   <div id="notice" class="notice" role="status" hidden></div>

@@ -48,13 +48,19 @@ export async function updateBrowserHeadless(configPath, headless) {
 }
 
 export async function enablePlugin(configPath, id) {
+  return setPluginEnabled(configPath, id, true);
+}
+
+export async function setPluginEnabled(configPath, id, value) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id || '')) throw new Error('插件 ID 无效');
+  if (typeof value !== 'boolean') throw new Error('enabled 必须为布尔值');
   const absolute = path.resolve(configPath);
   const raw = JSON.parse(await readFile(absolute, 'utf8'));
   const enabled = raw.plugins?.enabled || [];
   if (!Array.isArray(enabled)) throw new Error('plugins.enabled must be an array');
-  if (enabled.includes(id)) return;
-  raw.plugins = { ...raw.plugins, enabled: [...enabled, id] };
+  if (enabled.includes(id) === value) return enabled;
+  const next = value ? [...enabled, id] : enabled.filter((item) => item !== id);
+  raw.plugins = { ...raw.plugins, enabled: next };
   const temporary = `${absolute}.part-${randomUUID()}`;
   try {
     await writeFile(temporary, `${JSON.stringify(raw, null, 2)}\n`);
@@ -62,6 +68,7 @@ export async function enablePlugin(configPath, id) {
   } finally {
     await rm(temporary, { force: true });
   }
+  return next;
 }
 
 export async function loadConfig(configPath) {

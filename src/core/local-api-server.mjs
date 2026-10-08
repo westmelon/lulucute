@@ -173,6 +173,22 @@ export class LocalApiServer {
       const headless = await this.worker.setBrowserHeadless(body.headless);
       return this.sendJson(response, 200, { headless, state: this.worker.state() });
     }
+    if (request.method === 'GET' && url.pathname === '/api/plugins/installed') {
+      if (!this.pluginManager) throw new Error('插件管理未配置');
+      return this.sendJson(response, 200, await this.pluginManager.installed());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/plugins/enabled') {
+      if (!this.pluginManager) throw new Error('插件管理未配置');
+      const body = await readJson(request);
+      const result = await this.worker.withPluginOperation('正在保存插件配置',
+        () => this.pluginManager.setEnabled(body));
+      return this.sendJson(response, 200, result);
+    }
+    if (request.method === 'POST' && url.pathname === '/api/service/reload') {
+      if (!this.pluginManager) throw new Error('插件管理未配置');
+      const state = await this.worker.reloadService(() => this.pluginManager.loadRuntime());
+      return this.sendJson(response, 200, { state });
+    }
     if (request.method === 'POST' && ['/api/plugins/repository', '/api/plugins/install'].includes(url.pathname)) {
       if (!this.pluginManager) throw new Error('插件管理未配置');
       const body = await readJson(request);

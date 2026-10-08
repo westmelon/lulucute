@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { enablePlugin } from '../config.mjs';
+import { enablePlugin, loadConfig, setPluginEnabled } from '../config.mjs';
+import { loadLocalPlugins } from './plugin-loader.mjs';
 import { listInstalledPlugins, managePlugin, readPluginRepository } from './plugin-installer.mjs';
 
 export class PluginManager {
@@ -7,6 +8,12 @@ export class PluginManager {
     this.config = config;
     this.configPath = configPath;
     this.catalogs = new Map();
+  }
+
+  async installed() {
+    const plugins = await listInstalledPlugins(this.config.plugins.directories);
+    return { plugins: plugins.map((plugin) => ({ ...plugin,
+      enabled: this.config.plugins.enabled.includes(plugin.id) })) };
   }
 
   async browse({ repository, ref }) {
@@ -18,6 +25,23 @@ export class PluginManager {
     return { ...catalog, catalogId, plugins: catalog.plugins.map((plugin) => ({ ...plugin,
       installed: installed.some((item) => item.id === plugin.id),
       enabled: this.config.plugins.enabled.includes(plugin.id) })) };
+  }
+
+  async setEnabled({ id, enabled }) {
+    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error('插件 ID 无效');
+    if (typeof enabled !== 'boolean') throw new Error('enabled 必须为布尔值');
+    const plugins = await listInstalledPlugins(this.config.plugins.directories);
+    if (!plugins.some((plugin) => plugin.id === id)) throw new Error('插件未安装');
+    const changed = this.config.plugins.enabled.includes(id) !== enabled;
+    this.config.plugins.enabled = await setPluginEnabled(this.configPath, id, enabled);
+    return { id, enabled, restartRequired: changed };
+  }
+
+  async loadRuntime() {
+    const saved = await loadConfig(this.configPath);
+    const config = { ...this.config, plugins: saved.plugins };
+    const plugins = await loadLocalPlugins(config);
+    return { config, plugins };
   }
 
   async install({ catalogId, id, enable = false }) {

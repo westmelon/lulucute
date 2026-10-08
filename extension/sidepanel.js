@@ -3,6 +3,7 @@ const isExtension = typeof chrome !== 'undefined' && Boolean(chrome.storage?.loc
 const isDemo = new URLSearchParams(location.search).has('demo');
 
 const elements = {
+  dashboardPanel: document.querySelector('#dashboard-panel'),
   connectionDot: document.querySelector('#connection-dot'),
   connectionLabel: document.querySelector('#connection-label'),
   settingsToggle: document.querySelector('#settings-toggle'),
@@ -14,6 +15,10 @@ const elements = {
   saveSettings: document.querySelector('#save-settings'),
   pluginsToggle: document.querySelector('#plugins-toggle'),
   pluginsPanel: document.querySelector('#plugins-panel'),
+  installedRefresh: document.querySelector('#installed-refresh'),
+  serviceReload: document.querySelector('#service-reload'),
+  installedStatus: document.querySelector('#installed-status'),
+  installedPlugins: document.querySelector('#installed-plugins'),
   repositoryForm: document.querySelector('#repository-form'),
   repositoryInput: document.querySelector('#repository-input'),
   repositoryRef: document.querySelector('#repository-ref'),
@@ -104,6 +109,8 @@ let repositoryBusy = false;
 let installingPlugin = false;
 let repositoryRevision = 0;
 let repositoryTimer;
+let installedRevision = 0;
+let pluginSettingsBusy = false;
 
 function storageGet() {
   if (isExtension) return chrome.storage.local.get(['endpoint', 'token']);
@@ -385,8 +392,76 @@ function render(nextState = state) {
   renderRepositoryPlugins();
 }
 
+function pluginCategory(plugin) {
+  return plugin.type === 'provider' ? '网盘插件' : '网站插件';
+}
+
+function groupPluginRows(plugins, createRow) {
+  return ['网站插件', '网盘插件'].map((category) => {
+    const items = plugins.filter((plugin) => pluginCategory(plugin) === category);
+    const group = document.createElement('section');
+    group.className = 'plugin-group';
+    group.setAttribute('aria-label', category);
+    const title = document.createElement('h4');
+    title.textContent = `${category}（${items.length}）`;
+    const rows = document.createElement('div');
+    rows.className = 'repository-plugins';
+    if (items.length) rows.append(...items.map(createRow));
+    else {
+      const empty = document.createElement('p');
+      empty.className = 'repository-status';
+      empty.textContent = '暂无此类插件。';
+      rows.append(empty);
+    }
+    group.append(title, rows);
+    return group;
+  });
+}
+
+async function refreshInstalledPlugins() {
+  const revision = ++installedRevision;
+  elements.installedPlugins.replaceChildren();
+  elements.installedStatus.classList.remove('error');
+  if (isDemo || !settings.token) {
+    elements.installedStatus.textContent = isDemo ? '演示模式不读取本地插件。' : '请先连接本地服务。';
+    elements.installedRefresh.disabled = false;
+    return;
+  }
+  elements.installedRefresh.disabled = true;
+  elements.installedStatus.textContent = '正在读取已安装插件…';
+  try {
+    const { plugins } = await api('/api/plugins/installed');
+    if (revision !== installedRevision) return;
+    elements.installedPlugins.replaceChildren(...groupPluginRows(plugins, (plugin) => {
+      const row = document.createElement('div');
+      row.className = 'repository-plugin';
+      const title = document.createElement('strong');
+      title.textContent = plugin.name || plugin.id;
+      const details = document.createElement('p');
+      details.textContent = `${plugin.id} · ${plugin.enabled ? '已配置启用' : '未配置启用'}`;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'secondary-button';
+      button.dataset.enabledPluginId = plugin.id;
+      button.dataset.enabled = String(!plugin.enabled);
+      button.textContent = plugin.enabled ? '禁用' : '启用';
+      button.setAttribute('aria-label', `${plugin.name || plugin.id}：${button.textContent}`);
+      button.disabled = repositoryBusy || repositoryUnavailable();
+      row.append(title, details, button);
+      return row;
+    }));
+    elements.installedStatus.textContent = plugins.length ? `${plugins.length} 个已安装插件；更改后需重新加载服务。` : '尚未安装插件。';
+  } catch (error) {
+    if (revision !== installedRevision) return;
+    elements.installedStatus.textContent = error.message;
+    elements.installedStatus.classList.add('error');
+  } finally {
+    if (revision === installedRevision) elements.installedRefresh.disabled = false;
+  }
+}
+
 function repositoryUnavailable() {
-  return isDemo || !settings.token || state.running || Boolean(state.browser?.loginStatus) || Boolean(state.pluginOperation);
+  return isDemo || !settings.token || pluginSettingsBusy || state.running || Boolean(state.browser?.loginStatus) || Boolean(state.pluginOperation);
 }
 
 function setRepositoryStatus(message, error = false) {
@@ -396,13 +471,16 @@ function setRepositoryStatus(message, error = false) {
 
 function renderRepositoryPlugins() {
   elements.pluginsRestartHint.hidden = !state.pluginsRestartRequired;
+  elements.serviceReload.disabled = repositoryBusy || repositoryUnavailable();
+  elements.installedPlugins.querySelectorAll('[data-enabled-plugin-id]').forEach((button) => {
+    button.disabled = repositoryBusy || repositoryUnavailable();
+  });
   elements.repositoryRead.disabled = repositoryBusy || repositoryUnavailable();
-  elements.repositoryInput.disabled = installingPlugin;
-  elements.repositoryRef.disabled = installingPlugin;
-  elements.pluginEnable.disabled = installingPlugin;
+  elements.repositoryInput.disabled = installingPlugin || pluginSettingsBusy;
+  elements.repositoryRef.disabled = installingPlugin || pluginSettingsBusy;
+  elements.pluginEnable.disabled = installingPlugin || pluginSettingsBusy;
   if (!repositoryCatalog) { elements.repositoryPlugins.replaceChildren(); return; }
-  const types = { forum: '网站', provider: '下载 / 网盘', bundle: '网站与下载' };
-  const rows = repositoryCatalog.plugins.map((plugin) => {
+  const rows = groupPluginRows(repositoryCatalog.plugins, (plugin) => {
     const row = document.createElement('div');
     row.className = 'repository-plugin';
     const title = document.createElement('strong');
@@ -410,7 +488,7 @@ function renderRepositoryPlugins() {
     const description = document.createElement('p');
     description.textContent = plugin.description;
     const details = document.createElement('p');
-    details.textContent = `${plugin.id} · ${types[plugin.type]} · API ${plugin.apiVersion} · ${plugin.hosts.join('、')}`;
+    details.textContent = `${plugin.id} · API ${plugin.apiVersion} · ${plugin.hosts.join('、')}`;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'secondary-button';
@@ -463,9 +541,69 @@ function repositoryChanged() {
   if (elements.repositoryInput.value.trim()) repositoryTimer = setTimeout(readRepository, 800);
 }
 
-elements.pluginsToggle.addEventListener('click', () => {
-  elements.pluginsPanel.hidden = !elements.pluginsPanel.hidden;
+function showView(view) {
+  elements.dashboardPanel.hidden = view !== 'dashboard';
+  elements.pluginsPanel.hidden = view !== 'plugins';
+  elements.settingsPanel.hidden = view !== 'settings';
+  elements.pluginsToggle.setAttribute('aria-pressed', String(view === 'plugins'));
+  elements.settingsToggle.setAttribute('aria-pressed', String(view === 'settings'));
+  window.scrollTo(0, 0);
+  if (view === 'dashboard') document.querySelector('#capture-title').focus({ preventScroll: true });
+  else document.querySelector(`#${view}-title`).focus({ preventScroll: true });
+  if (view === 'plugins') {
+    renderRepositoryPlugins();
+    refreshInstalledPlugins();
+  }
+}
+
+elements.pluginsToggle.addEventListener('click', () => showView(elements.pluginsPanel.hidden ? 'plugins' : 'dashboard'));
+document.querySelectorAll('[data-view]').forEach((button) => {
+  button.addEventListener('click', () => showView(button.dataset.view));
+});
+elements.installedRefresh.addEventListener('click', refreshInstalledPlugins);
+elements.installedPlugins.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-enabled-plugin-id]');
+  if (!button || button.disabled || repositoryBusy || repositoryUnavailable()) return;
+  pluginSettingsBusy = true;
   renderRepositoryPlugins();
+  try {
+    const result = await api('/api/plugins/enabled', { method: 'POST', body: JSON.stringify({
+      id: button.dataset.enabledPluginId, enabled: button.dataset.enabled === 'true'
+    }) });
+    const plugin = repositoryCatalog?.plugins.find((item) => item.id === result.id);
+    if (plugin) plugin.enabled = result.enabled;
+    const message = `已保存${result.enabled ? '启用' : '禁用'}配置，点击“重新加载服务”后生效`;
+    setRepositoryStatus(message);
+    showNotice(message);
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
+    pluginSettingsBusy = false;
+    await refresh();
+    await refreshInstalledPlugins();
+  }
+});
+elements.serviceReload.addEventListener('click', async () => {
+  if (repositoryBusy || repositoryUnavailable()) return;
+  pluginSettingsBusy = true;
+  elements.serviceReload.textContent = '正在重新加载…';
+  renderRepositoryPlugins();
+  try {
+    const result = await api('/api/service/reload', { method: 'POST' });
+    render(result.state);
+    repositoryCatalog = undefined;
+    setRepositoryStatus('服务已重新加载，插件配置已生效。');
+    showNotice('服务已重新加载，插件配置已生效');
+  } catch (error) {
+    const message = `重新加载失败：${error.message}`;
+    setRepositoryStatus(message, true);
+    showNotice(message);
+  } finally {
+    pluginSettingsBusy = false;
+    elements.serviceReload.textContent = '重新加载服务';
+    renderRepositoryPlugins();
+    await refreshInstalledPlugins();
+  }
 });
 elements.repositoryInput.addEventListener('input', repositoryChanged);
 elements.repositoryRef.addEventListener('input', repositoryChanged);
@@ -484,7 +622,8 @@ elements.repositoryPlugins.addEventListener('click', async (event) => {
     }) });
     plugin.installed = true;
     plugin.enabled = result.enabled;
-    setRepositoryStatus(result.warning || `${plugin.name || plugin.id} 已安装${result.enabled ? '并配置启用' : ''}；重启本地服务后生效。`, Boolean(result.warning));
+    setRepositoryStatus(result.warning || `${plugin.name || plugin.id} 已安装${result.enabled ? '并配置启用' : ''}；重新加载服务后生效。`, Boolean(result.warning));
+    await refreshInstalledPlugins();
   } catch (error) {
     setRepositoryStatus(error.message, true);
   } finally {
@@ -545,7 +684,7 @@ async function perform(action) {
 }
 
 elements.settingsToggle.addEventListener('click', () => {
-  elements.settingsPanel.hidden = !elements.settingsPanel.hidden;
+  showView(elements.settingsPanel.hidden ? 'settings' : 'dashboard');
 });
 
 elements.saveSettings.addEventListener('click', async () => {
@@ -554,7 +693,7 @@ elements.saveSettings.addEventListener('click', async () => {
     token: elements.tokenInput.value.trim()
   };
   await storageSet(settings);
-  elements.settingsPanel.hidden = true;
+  showView('dashboard');
   updateCurrentUrl(elements.currentUrl.value);
   await refresh();
   connectEvents();
@@ -709,7 +848,7 @@ async function initialize() {
   }
 
   if (!settings.token) {
-    elements.settingsPanel.hidden = false;
+    showView('settings');
     setConnection('offline', '需要令牌');
     return;
   }

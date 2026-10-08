@@ -382,3 +382,56 @@ test('failed plugin operations release guards and preserve manual queue pause', 
   await assert.rejects(() => worker.withPluginOperation('安装', async () => ({})), /任务运行/);
   worker.running = false;
 });
+
+test('service reload replaces plugin routing and queue normalization while preserving tasks and pause', async (t) => {
+  const config = { plugins: { enabled: ['old'] }, browser: { headless: true } };
+  const { worker, queue } = await loginWorker(t, { config });
+  worker.pause();
+  await worker.enqueue(['https://example.com/waiting']);
+  const tasks = structuredClone(queue.tasks());
+  worker.pluginsRestartRequired = true;
+  let closed = false;
+  worker.context = { close: async () => { closed = true; } };
+  const nextConfig = { plugins: { enabled: ['new'] } };
+  const plugins = { sites: [{ id: 'new', hosts: ['new.example.com'] }],
+    forums: [{ normalizeUrl: (value) => value.replace('/alias', '/canonical') }], providers: [] };
+  const state = await worker.reloadService(async () => ({ config: nextConfig, plugins }));
+  assert.equal(closed, true);
+  assert.equal(worker.context, null);
+  assert.equal(worker.config, config);
+  assert.equal(config.plugins, nextConfig.plugins);
+  assert.equal(worker.plugins, plugins);
+  assert.deepEqual(state.forums, plugins.sites);
+  assert.equal(state.pluginsRestartRequired, false);
+  assert.equal(state.paused, true);
+  assert.deepEqual(queue.tasks(), tasks);
+  const result = await worker.enqueue(['https://example.com/alias']);
+  assert.equal(result.added[0].url, 'https://example.com/canonical');
+});
+
+test('failed and busy service reloads keep the running plugins and pending change indicator', async (t) => {
+  const { worker, queue } = await loginWorker(t);
+  worker.pause();
+  worker.pluginsRestartRequired = true;
+  const plugins = worker.plugins;
+  const config = worker.config;
+  const forums = worker.forums;
+  const context = { close: async () => { throw new Error('close-failed'); } };
+  worker.context = context;
+  await assert.rejects(() => worker.reloadService(async () => { throw new Error('bad-plugin'); }), /bad-plugin/);
+  await assert.rejects(() => worker.reloadService(async () => ({ config: { plugins: {} }, plugins: {} })), /close-failed/);
+  assert.equal(worker.plugins, plugins);
+  assert.equal(worker.config, config);
+  assert.equal(worker.forums, forums);
+  assert.equal(worker.context, context);
+  assert.equal(worker.state().pluginsRestartRequired, true);
+  assert.equal(worker.reconfiguring, false);
+  assert.equal(worker.paused, true);
+  for (const property of ['running', 'loginStatus', 'reconfiguring', 'closing']) {
+    worker[property] = true;
+    await assert.rejects(() => worker.reloadService(async () => { assert.fail('must not load'); }), /稍后/);
+    worker[property] = false;
+  }
+  assert.deepEqual(queue.tasks(), []);
+  worker.context = null;
+});

@@ -190,6 +190,22 @@ test('page install pins the catalog commit after HEAD moves and preserves config
   await assert.rejects(() => manager.install({ catalogId: 'expired', id: 'sample' }), /失效/);
 });
 
+test('installed list includes disabled plugins and configured enabled status without executing entries', async (t) => {
+  const f = await fixture(t);
+  const config = { plugins: { directories: [f.directory], enabled: [] } };
+  const manager = new PluginManager({ config });
+  assert.deepEqual(await manager.installed(), { plugins: [] });
+  const marker = path.join(f.root, 'executed');
+  await f.version('listed', `import { writeFileSync } from 'node:fs';
+    writeFileSync(${JSON.stringify(marker)}, 'executed'); throw new Error('must not run');`, { name: '示例下载' });
+  await managePlugin({ ...f.options, action: 'install', ref: 'listed' });
+  const expected = { ...manifest, name: '示例下载', enabled: false };
+  assert.deepEqual(await manager.installed(), { plugins: [expected] });
+  config.plugins.enabled.push('sample');
+  assert.deepEqual(await manager.installed(), { plugins: [{ ...expected, enabled: true }] });
+  assert.equal((await readdir(f.root)).includes('executed'), false);
+});
+
 test('page installer reports config persistence failures without losing installed files', async (t) => {
   const f = await fixture(t);
   await addCatalog(f);
@@ -200,4 +216,34 @@ test('page installer reports config persistence failures without losing installe
   assert.equal(installed.enabled, false);
   assert.match(installed.warning, /启用配置保存失败/);
   assert.equal(await readFile(path.join(f.directory, 'sample/index.mjs'), 'utf8'), source(1));
+});
+
+test('page enable and disable preserve other configuration, plugin files and enabled order', async (t) => {
+  const f = await fixture(t);
+  await managePlugin({ ...f.options, action: 'install' });
+  const configPath = path.join(f.root, 'config.json');
+  const raw = { browser: { headless: true }, plugins: { directories: ['./installed'],
+    enabled: ['first', 'sample', 'last'], options: { sample: { key: 1 } } } };
+  await writeFile(configPath, JSON.stringify(raw));
+  const config = { plugins: { ...raw.plugins, directories: [f.directory] } };
+  const manager = new PluginManager({ config, configPath });
+  assert.deepEqual(await manager.setEnabled({ id: 'sample', enabled: false }),
+    { id: 'sample', enabled: false, restartRequired: true });
+  assert.deepEqual(config.plugins.enabled, ['first', 'last']);
+  assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')),
+    { ...raw, plugins: { ...raw.plugins, enabled: ['first', 'last'] } });
+  assert.equal((await manager.installed()).plugins[0].enabled, false);
+  assert.equal(await readFile(path.join(f.directory, 'sample/index.mjs'), 'utf8'), source(1));
+  await manager.setEnabled({ id: 'sample', enabled: true });
+  assert.deepEqual(config.plugins.enabled, ['first', 'last', 'sample']);
+  const saved = await readFile(configPath, 'utf8');
+  assert.equal((await manager.setEnabled({ id: 'sample', enabled: true })).restartRequired, false);
+  assert.equal(await readFile(configPath, 'utf8'), saved);
+  await assert.rejects(() => manager.setEnabled({ id: 'missing', enabled: true }), /未安装/);
+  await assert.rejects(() => manager.setEnabled({ id: '../sample', enabled: false }), /ID 无效/);
+  await assert.rejects(() => manager.setEnabled({ id: 'sample', enabled: 'false' }), /布尔值/);
+  assert.equal(await readFile(configPath, 'utf8'), saved);
+  manager.configPath = path.join(f.root, 'missing/config.json');
+  await assert.rejects(() => manager.setEnabled({ id: 'sample', enabled: false }), /ENOENT/);
+  assert.deepEqual(config.plugins.enabled, ['first', 'last', 'sample']);
 });

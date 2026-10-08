@@ -179,6 +179,22 @@ export class QueueWorker {
     finally { this.pluginPromise = null; }
   }
 
+  async reloadService(loadRuntime) {
+    await this.withPluginOperation('正在重新加载服务', async () => {
+      const { config, plugins } = await loadRuntime();
+      if (this.closing) throw new Error('本地服务正在关闭');
+      if (this.context) await this.context.close();
+      this.context = null;
+      this.config.plugins = config.plugins;
+      this.plugins = plugins;
+      this.forums = plugins.sites;
+      this.queue.forums = plugins.forums;
+      this.pluginsRestartRequired = false;
+      return { restartRequired: false };
+    });
+    return this.state();
+  }
+
   async openLogin(pluginId) {
     const plugin = (this.plugins.manifests || []).find((manifest) => manifest.id === pluginId);
     if (!plugin?.loginUrl) throw new Error('插件未启用或未提供登录入口');
