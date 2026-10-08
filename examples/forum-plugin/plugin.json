@@ -1,0 +1,8 @@
+{
+  "id": "example-forum",
+  "name": "Example Forum",
+  "type": "forum",
+  "apiVersion": 1,
+  "entry": "./index.mjs",
+  "hosts": ["forum.example.com"]
+}

@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "lulucute",
+  "version": "0.1.0",
+  "description": "将论坛资源加入本地下载队列并查看归档进度。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2OWKnqFKYR7Z4LQEEJRAQA5mizWdqOFZ231egkudS1lL385rI8HJcIY2vIE42tB6XC9wkNNGtNjkY0j2s7BgnB5bRkfwyGyWAvN+16xka6Nx0JAeKBBY49VmeU1oIMIIWRGRDFD2ImPks65GQwfpJXckph4B1hEcVOlO9f2xrh1WJPD/Wv/zevqGCHaV7NZMrA5bJflqwzgmKhv4Phf/IlrAtWznMt439Cx3NGOqJzP65AIMhsFLTffB55uGhfjUAl4ABB63NTs0klyEkzxlYyvdiYpZcgdGKDhdyIqWJQr5mdX+ZnaLZuROLv2r5/reOn91OIbRBxOKtHwMIOtmjwIDAQAB",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "nativeMessaging",
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "打开 lulucute"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+.data/
+config.json
+*.part-*
+
+# 从独立仓库安装的插件及更新备份
+plugins/
+.plugins-backups/
+.plugins-install.lock/
+.plugins-stage-*/

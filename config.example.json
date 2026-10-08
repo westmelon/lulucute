@@ -1,0 +1,26 @@
+{
+  "downloadRoot": "/absolute/path/to/ResourceHub",
+  "browserProfileDirectory": "./.data/browser-profile",
+  "taskQueueFile": "./.data/task-queue.json",
+  "server": {
+    "port": 43127,
+    "tokenFile": "./.data/server-token",
+    "idleShutdownMs": 120000
+  },
+  "browser": {
+    "channel": "chrome",
+    "headless": false
+  },
+  "plugins": {
+    "directories": [
+      "./plugins"
+    ],
+    "enabled": [],
+    "options": {}
+  },
+  "workflow": {
+    "autoReply": true,
+    "replyText": "感谢分享，正好在找：{title}",
+    "keepBrowserOpenOnActionRequired": true
+  }
+}

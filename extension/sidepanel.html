@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lulucute</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-block">
+      <span class="brand-mark" aria-hidden="true">LC</span>
+      <div>
+        <h1>lulucute</h1>
+        <div class="connection-line">
+          <span id="connection-dot" class="status-dot offline"></span>
+          <span id="connection-label">未连接</span>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="plugins-toggle" class="icon-button" type="button" title="插件安装" aria-label="插件安装"><i data-lucide="puzzle"></i></button>
+      <button id="settings-toggle" class="icon-button" type="button" title="连接设置" aria-label="连接设置"><i data-lucide="settings"></i></button>
+    </div>
+  </header>
+
+  <section id="settings-panel" class="settings-panel" hidden>
+    <label for="endpoint-input">本地服务</label>
+    <input id="endpoint-input" type="url" spellcheck="false" value="http://127.0.0.1:43127">
+    <label for="token-input">访问令牌</label>
+    <input id="token-input" type="password" autocomplete="off" spellcheck="false">
+    <div class="setting-row">
+      <span id="headless-label" class="setting-name">后台静默运行</span>
+      <label id="headless-control" class="toggle-control" title="隐藏自动化浏览器窗口">
+        <input id="headless-toggle" type="checkbox" aria-labelledby="headless-label">
+        <span class="toggle-track" aria-hidden="true"></span>
+      </label>
+    </div>
+    <button id="save-settings" class="secondary-button" type="button">保存连接</button>
+  </section>
+
+  <main>
+    <section id="plugins-panel" class="plugins-panel" aria-labelledby="plugins-title" hidden>
+      <h2 id="plugins-title">插件安装</h2>
+      <form id="repository-form">
+        <label for="repository-input">插件仓库地址</label>
+        <input id="repository-input" type="text" spellcheck="false" placeholder="HTTPS、SSH 地址或本地仓库路径" required>
+        <label for="repository-ref">版本（可选）</label>
+        <input id="repository-ref" type="text" spellcheck="false" placeholder="留空读取默认分支；也可填写标签或 commit">
+        <button id="repository-read" class="secondary-button" type="submit">读取插件列表</button>
+      </form>
+      <label class="plugin-enable-option"><input id="plugin-enable" type="checkbox" checked> 安装后启用（重启服务生效）</label>
+      <p class="login-hint">仅安装可信仓库的插件。</p>
+      <p id="plugins-restart-hint" class="login-hint" hidden>插件文件或启用配置已变更，重启本地服务后生效。</p>
+      <p id="repository-status" class="repository-status" role="status" aria-live="polite">填写仓库地址后自动读取插件列表。</p>
+      <div id="repository-plugins" class="repository-plugins"></div>
+    </section>
+    <section class="capture-band" aria-labelledby="capture-title">
+      <div class="section-heading">
+        <h2 id="capture-title">当前帖子</h2>
+        <span id="site-badge" class="site-badge">未识别</span>
+      </div>
+      <input id="current-url" class="url-input" type="url" spellcheck="false" aria-label="当前帖子地址">
+      <button id="enqueue-current" class="primary-button" type="button">
+        <i data-lucide="plus" aria-hidden="true"></i>
+        <span>加入队列</span>
+      </button>
+      <div id="plugin-actions"></div>
+      <div id="plugin-login-panel" hidden>
+        <button id="plugin-login" class="secondary-button" type="button">登录</button>
+        <p id="plugin-login-hint" class="login-hint">在弹出窗口登录，完成后点击“完成登录”。</p>
+      </div>
+    </section>
+
+    <section class="queue-band" aria-labelledby="queue-title">
+      <div class="section-heading queue-heading">
+        <div>
+          <h2 id="queue-title">下载队列</h2>
+          <span id="queue-summary" class="queue-summary">0 个任务</span>
+        </div>
+        <div class="toolbar">
+          <button id="retry-all" class="icon-button" type="button" title="重试全部失败任务" aria-label="重试全部失败任务"><i data-lucide="refresh-cw"></i></button>
+          <button id="pause-toggle" class="icon-button" type="button" title="暂停队列" aria-label="暂停队列"><i data-lucide="pause"></i></button>
+        </div>
+      </div>
+
+      <div class="segmented-control" role="tablist" aria-label="任务筛选">
+        <button class="segment active" type="button" data-filter="active" role="tab" aria-selected="true">进行中</button>
+        <button class="segment" type="button" data-filter="issues" role="tab" aria-selected="false">需处理</button>
+        <button class="segment" type="button" data-filter="completed" role="tab" aria-selected="false">已完成</button>
+      </div>
+
+      <div id="task-list" class="task-list" aria-live="polite"></div>
+      <div id="empty-state" class="empty-state">当前没有任务</div>
+    </section>
+  </main>
+
+  <div id="notice" class="notice" role="status" hidden></div>
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="confirm-surface">
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button id="confirm-cancel" class="secondary-button" type="button">返回</button>
+        <button id="confirm-action" class="danger-button" type="button">确认</button>
+      </div>
+    </div>
+  </dialog>
+  <script src="vendor/lucide.min.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
