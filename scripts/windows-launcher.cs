@@ -40,7 +40,7 @@ class Launcher
             StartupInfo info;
             using (var process = Process.Start(start))
             {
-                var stdout = process.StandardOutput.ReadToEndAsync();
+                var stdout = process.StandardOutput.ReadLineAsync();
                 var stderr = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(40000))
                 {

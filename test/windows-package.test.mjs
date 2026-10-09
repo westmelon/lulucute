@@ -86,7 +86,12 @@ test('Windows portable EXE works without system Node or Git and the registered l
   await exec(git, ['add', '.'], { cwd: repository, env });
   await exec(git, ['-c', 'user.name=Package Test', '-c', 'user.email=test@example.invalid', 'commit', '--quiet', '-m', 'sample'], { cwd: repository, env });
 
-  await exec(path.join(portable, 'lulucute.exe'), ['--check'], { cwd: root, env, timeout: 45_000 });
+  // 模拟双击的无终端启动；等待 EXE 退出，不等待后台进程继承的管道 EOF。
+  const launcher = spawn(path.join(portable, 'lulucute.exe'), ['--check'], {
+    cwd: root, env, timeout: 45_000, windowsHide: true, stdio: 'ignore'
+  });
+  const [launcherCode] = await once(launcher, 'exit');
+  assert.equal(launcherCode, 0, 'Portable EXE failed; see the packaged service log');
   const token = (await readFile(path.join(portable, '.data', 'server-token'), 'utf8')).trim();
   async function api(route, body) {
     const response = await fetch(`${endpoint}${route}`, {
