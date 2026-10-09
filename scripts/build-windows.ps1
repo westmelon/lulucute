@@ -7,6 +7,8 @@ trap {
 }
 
 if ($env:OS -ne 'Windows_NT') { throw 'Windows portable packages must be built on Windows.' }
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility') -Force
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Archive') -Force
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 $buildDirectory = Join-Path $projectDirectory 'dist'
 $packageDirectory = Join-Path $buildDirectory 'lulucute-windows-x64'
