@@ -1,5 +1,10 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+trap {
+    $detail = "$($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)" -replace '[\r\n]+', ' '
+    Write-Host "::error::$detail"
+    exit 1
+}
 
 if ($env:OS -ne 'Windows_NT') { throw 'Windows portable packages must be built on Windows.' }
 $projectDirectory = Split-Path -Parent $PSScriptRoot
@@ -54,10 +59,11 @@ Remove-Item $gitArchive
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (!(Test-Path $compiler)) { throw 'The .NET Framework C# compiler is unavailable.' }
 $executable = Join-Path $packageDirectory 'lulucute.exe'
-& $compiler /nologo /target:winexe /platform:x64 /optimize /codepage:65001 "/out:$executable" `
-    /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Runtime.Serialization.dll `
+$compilerOutput = & $compiler /nologo /target:winexe /platform:x64 /optimize /codepage:65001 "/out:$executable" `
+    /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Runtime.Serialization.dll /reference:System.Xml.dll `
     (Join-Path $PSScriptRoot 'windows-launcher.cs')
-if ($LASTEXITCODE -ne 0) { throw 'Windows launcher compilation failed.' }
+Write-Host ($compilerOutput -join "`n")
+if ($LASTEXITCODE -ne 0) { throw "Windows launcher compilation failed: $($compilerOutput -join ' ')" }
 
 $archive = Join-Path $buildDirectory 'lulucute-windows-x64.zip'
 if (Test-Path $archive) { Remove-Item $archive }
