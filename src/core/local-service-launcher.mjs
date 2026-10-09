@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { access, mkdir, open, readFile } from 'node:fs/promises';
+import { mkdir, open, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../config.mjs';
 
@@ -30,16 +30,6 @@ export async function startLocalService(configPath, { projectDirectory = project
   const config = await loadConfig(configPath);
   if (await serviceIsReady(config)) return { ok: true, started: false };
 
-  const env = { ...process.env };
-  const gitDirectory = path.join(projectDirectory, 'tools', 'git', 'cmd');
-  try {
-    await access(path.join(gitDirectory, 'git.exe'));
-    const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
-    env[pathKey] = [gitDirectory, path.join(projectDirectory, 'tools', 'git', 'usr', 'bin'), env[pathKey] || ''].join(path.delimiter);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-
   const dataDirectory = path.dirname(config.server.tokenFile);
   await mkdir(dataDirectory, { recursive: true });
   const logPath = path.join(dataDirectory, 'server.log');
@@ -47,7 +37,6 @@ export async function startLocalService(configPath, { projectDirectory = project
   try {
     const child = spawn(process.execPath, [path.join(projectDirectory, 'src', 'server.mjs'), '--config', configPath, '--managed'], {
       cwd: projectDirectory,
-      env,
       detached: true,
       windowsHide: true,
       stdio: ['ignore', log.fd, log.fd]

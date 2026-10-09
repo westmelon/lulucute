@@ -6,6 +6,7 @@ config.json
 
 # 从独立仓库安装的插件及更新备份
 plugins/
+!test/fixtures/raw-repository/plugins/
 .plugins-backups/
 .plugins-install.lock/
 .plugins-stage-*/

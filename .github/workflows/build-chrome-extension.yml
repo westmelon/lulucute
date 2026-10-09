@@ -29,7 +29,7 @@ jobs:
         run: npm run build:extension
 
       - name: Test extension and native messaging
-        run: node --test test/extension.test.mjs test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs
+        run: node --test test/extension.test.mjs test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs test/plugin-installer.test.mjs
 
       - name: Package extension
         working-directory: extension
@@ -59,7 +59,7 @@ jobs:
         run: npm ci
 
       - name: Test Windows native messaging
-        run: node --test test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs
+        run: node --test test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs test/plugin-installer.test.mjs
 
       - name: Build extension assets
         run: npm run build:extension
@@ -79,6 +79,7 @@ jobs:
           }
         env:
           LULUCUTE_PORTABLE_DIRECTORY: ${{ github.workspace }}/dist/lulucute-windows-x64
+          LULUCUTE_RAW_PLUGIN_INDEX: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/test/fixtures/raw-repository/repository.json
 
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v4

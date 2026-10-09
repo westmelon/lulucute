@@ -1,0 +1,7 @@
+{
+  "id": "raw-sample",
+  "type": "provider",
+  "apiVersion": 1,
+  "entry": "./index.mjs",
+  "hosts": ["raw.example"]
+}

@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { managePlugin, readPluginRepository } from '../src/core/plugin-installer.mjs';
 import { PluginManager } from '../src/core/plugin-manager.mjs';
 import { loadLocalPlugins } from '../src/core/plugin-loader.mjs';
+import { normalizeRepository } from '../src/core/plugin-source.mjs';
 
 const run = promisify(execFile);
 const manifest = { id: 'sample', type: 'provider', apiVersion: 1, entry: './index.mjs', hosts: ['example.com'] };
@@ -34,13 +35,43 @@ async function fixture(t) {
     await git('tag', ref);
   }
   await version('v1', source(1));
+  // 用真实 Git 快照模拟 GitHub 的 API/raw 响应，运行时安装器完全不调用 Git。
+  const remote = 'https://github.com/example/plugins';
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = new URL(input);
+    const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    try {
+      if (url.hostname === 'api.github.com' && parts[3] === 'commits') {
+        const ref = parts[4] || 'HEAD';
+        const { stdout } = await git('rev-parse', `${ref}^{commit}`);
+        const info = { sha: stdout.trim() };
+        return Response.json(parts[4] ? info : [info]);
+      }
+      if (url.hostname === 'api.github.com' && parts[3] === 'git' && parts[4] === 'trees') {
+        const { stdout } = await git('ls-tree', '-r', '-l', parts[5]);
+        const tree = stdout.trim().split('\n').filter(Boolean).map((line) => {
+          const [info, name] = line.split('\t');
+          const [mode, type, sha, size] = info.trim().split(/\s+/);
+          return { path: name, mode, type, sha, size: Number(size) };
+        });
+        return Response.json({ tree, truncated: false });
+      }
+      if (url.hostname === 'raw.githubusercontent.com') {
+        const { stdout } = await run('git', ['show', `${parts[2]}:${parts.slice(3).join('/')}`], {
+          cwd: repository, encoding: 'buffer'
+        });
+        return new Response(stdout);
+      }
+      throw new Error(`Unexpected test URL: ${url}`);
+    } catch { return new Response('', { status: 404 }); }
+  });
   const directory = path.join(root, 'installed');
-  const options = { id: 'sample', directory, repository, ref: 'v1' };
+  const options = { id: 'sample', directory, repository: remote, ref: 'v1' };
   async function loadedVersion() {
     const loaded = await loadLocalPlugins({ plugins: { directories: [directory], enabled: ['sample'] } }, { log: () => {} });
     return (await loaded.providers[0].resolve()).version;
   }
-  return { root, plugin, git, version, directory, options, loadedVersion };
+  return { root, repository, plugin, git, version, directory, options, loadedVersion };
 }
 
 test('install fetches a pinned version, writes provenance and only installs the selected plugin', async (t) => {
@@ -81,7 +112,7 @@ test('invalid versions, manifests and syntax leave the installed plugin and back
   await assert.rejects(() => managePlugin({ ...f.options, action: 'update', ref: 'bad-id' }), /ID 不匹配/);
   await f.version('bad-syntax', 'export function {');
   await assert.rejects(() => managePlugin({ ...f.options, action: 'update', ref: 'bad-syntax' }), /语法无效/);
-  await assert.rejects(() => managePlugin({ ...f.options, action: 'update', ref: 'missing-tag' }), /Git 操作失败/);
+  await assert.rejects(() => managePlugin({ ...f.options, action: 'update', ref: 'missing-tag' }), /版本不存在/);
   assert.equal(await readFile(path.join(f.directory, 'sample/index.mjs'), 'utf8'), source(1));
   assert.deepEqual((await readdir(f.root)).sort(), ['installed', 'source repository']);
 });
@@ -107,7 +138,7 @@ test('CLI resolves the install directory beside the config without requiring a d
   const before = await readFile(config, 'utf8');
   const script = new URL('../scripts/plugins.mjs', import.meta.url);
   const { stdout } = await run(process.execPath, [script.pathname, 'install', 'sample', '--config', config,
-    '--repository', f.options.repository, '--ref', 'v1']);
+    '--repository', f.repository, '--ref', 'HEAD']);
   assert.match(stdout, /插件文件已就绪/);
   assert.equal(await readFile(path.join(f.root, 'custom/plugins/sample/index.mjs'), 'utf8'), source(1));
   assert.equal(await readFile(config, 'utf8'), before);
@@ -126,7 +157,7 @@ test('installer serializes mutations and rejects invalid input without touching 
 
 async function addCatalog(f, catalog = { schemaVersion: 1, name: '示例仓库',
   plugins: [{ id: 'sample', description: '下载示例' }] }) {
-  await writeFile(path.join(f.options.repository, 'repository.json'), JSON.stringify(catalog));
+  await writeFile(path.join(f.repository, 'repository.json'), JSON.stringify(catalog));
   await f.version(`catalog-${Date.now()}`, source(1));
 }
 
@@ -155,11 +186,11 @@ test('catalog rejects missing index, duplicate IDs, traversal and directory link
   await addCatalog(f, { schemaVersion: 1, name: '仓库', plugins: [{ id: '../escape' }] });
   await assert.rejects(() => readPluginRepository({ repository: f.options.repository }), /ID 无效/);
   await addCatalog(f, { schemaVersion: 1, name: '仓库', plugins: [{ id: 'sample' }] });
-  await rm(path.join(f.options.repository, 'repository.json'));
-  await symlink('plugins/sample/plugin.json', path.join(f.options.repository, 'repository.json'));
+  await rm(path.join(f.repository, 'repository.json'));
+  await symlink('plugins/sample/plugin.json', path.join(f.repository, 'repository.json'));
   await f.git('add', '.');
   await f.git('commit', '--quiet', '-m', 'linked index');
-  await assert.rejects(() => readPluginRepository({ repository: f.options.repository }), /普通文件/);
+  await assert.rejects(() => readPluginRepository({ repository: f.options.repository }), /符号链接/);
 });
 
 test('page install pins the catalog commit after HEAD moves and preserves config while enabling', async (t) => {
@@ -246,4 +277,66 @@ test('page enable and disable preserve other configuration, plugin files and ena
   manager.configPath = path.join(f.root, 'missing/config.json');
   await assert.rejects(() => manager.setEnabled({ id: 'sample', enabled: false }), /ENOENT/);
   assert.deepEqual(config.plugins.enabled, ['first', 'last', 'sample']);
+});
+
+test('raw index downloads nested imports and fixes every request to the resolved commit', async (t) => {
+  const f = await fixture(t);
+  await addCatalog(f);
+  await mkdir(path.join(f.plugin, 'lib'));
+  await writeFile(path.join(f.plugin, 'lib', 'value.mjs'), 'export const version = 3;');
+  await f.version('raw', `import { version } from './lib/value.mjs';
+    export function createAdapter() { return { match: () => true, resolve: async () => ({ version }) }; }`);
+  const repository = 'https://raw.githubusercontent.com/example/plugins/HEAD/repository.json';
+  const catalog = await readPluginRepository({ repository });
+  await f.version('changed', source(4));
+  const result = await managePlugin({ ...f.options, repository, ref: catalog.commit, action: 'install' });
+  assert.equal(result.commit, catalog.commit);
+  assert.equal(await f.loadedVersion(), 3);
+  const urls = globalThis.fetch.mock.calls.map((call) => call.arguments[0]);
+  assert.ok(urls.filter((url) => url.includes('raw.githubusercontent.com')).every((url) => /\/[a-f0-9]{40}\//.test(url)));
+});
+
+test('raw checksum failures and rate limits preserve installed files and remove staging', async (t) => {
+  const f = await fixture(t);
+  await managePlugin({ ...f.options, action: 'install' });
+  await f.version('changed', source(2));
+  const originalFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (url) => url.includes('raw.githubusercontent.com')
+    ? new Response('corrupted') : originalFetch(url));
+  await assert.rejects(() => managePlugin({ ...f.options, ref: 'changed', action: 'update' }), /校验失败/);
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 403 }));
+  await assert.rejects(() => managePlugin({ ...f.options, ref: 'changed', action: 'update' }), /请求次数/);
+  assert.equal(await readFile(path.join(f.directory, 'sample', 'index.mjs'), 'utf8'), source(1));
+  assert.deepEqual((await readdir(f.root)).sort(), ['installed', 'source repository']);
+});
+
+test('unsafe GitHub tree paths and truncated trees are rejected before writing files', async (t) => {
+  const f = await fixture(t);
+  for (const unsafe of ['plugins/../outside.mjs', 'plugins/sample/CON.txt', 'plugins/sample/name:stream', 'plugins/sample/name\\escape']) {
+    t.mock.method(globalThis, 'fetch', async () => Response.json({ tree: [{
+      path: unsafe, mode: '100644', type: 'blob', size: 1, sha: '0'.repeat(40)
+    }] }));
+    await assert.rejects(() => managePlugin({ ...f.options, ref: '0'.repeat(40), action: 'install' }), /路径无效/);
+  }
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ tree: [], truncated: true }));
+  await assert.rejects(() => managePlugin({ ...f.options, ref: '0'.repeat(40), action: 'install' }), /文件列表不完整/);
+});
+
+test('local directory installs need no Git and reject stale catalog fingerprints', async (t) => {
+  const f = await fixture(t);
+  await addCatalog(f);
+  const catalog = await readPluginRepository({ repository: f.repository });
+  await writeFile(path.join(f.plugin, 'index.mjs'), source(2));
+  await assert.rejects(() => managePlugin({ ...f.options, repository: f.repository, ref: catalog.commit, action: 'install' }), /内容已变化/);
+  await managePlugin({ ...f.options, repository: f.repository, ref: 'HEAD', action: 'install' });
+  assert.equal(await f.loadedVersion(), 2);
+});
+
+test('repository addresses reject SSH, credentials and non-GitHub destinations', () => {
+  assert.equal(normalizeRepository('https://github.com/example/plugins.git'), 'https://github.com/example/plugins');
+  for (const value of ['git@example.com:plugins.git', 'ssh://git@github.com/example/plugins',
+    'https://token@github.com/example/plugins', 'https://example.com/repository.json',
+    'https://github.com/example/plugins?token=secret']) {
+    assert.throws(() => normalizeRepository(value), /仅支持/);
+  }
 });

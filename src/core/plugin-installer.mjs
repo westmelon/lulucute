@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { inspectPluginPackage, loadLocalPlugins, PLUGIN_API_VERSION } from './plugin-loader.mjs';
+import { checkoutRepository, normalizeRepository } from './plugin-source.mjs';
 
 const run = promisify(execFile);
 const metadataFile = '.resource-hub-install.json';
@@ -13,35 +14,6 @@ async function exists(target) {
   try { await lstat(target); return true; } catch (error) {
     if (error.code === 'ENOENT') return false;
     throw error;
-  }
-}
-
-function normalizeRepository(repository) {
-  if (typeof repository !== 'string' || !repository.trim() || repository.startsWith('-')) {
-    throw new Error('请指定 --repository 仓库地址或本地路径');
-  }
-  if (/^(https|ssh):\/\//.test(repository)) {
-    const url = new URL(repository);
-    if (url.password || (url.protocol === 'https:' && url.username) || url.search || url.hash) {
-      throw new Error('仓库地址不能包含密码、令牌或查询参数');
-    }
-    return repository;
-  }
-  if (/^[\w.-]+@[\w.-]+:[\w./-]+$/.test(repository)) return repository;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(repository) && !/^[A-Za-z]:[\\/]/.test(repository)) {
-    throw new Error('仓库仅支持 HTTPS、SSH 或本地路径');
-  }
-  return path.resolve(repository);
-}
-
-async function git(directory, args) {
-  try {
-    return (await run('git', ['-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false', ...args], {
-      cwd: directory, timeout: 120_000, maxBuffer: 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-    })).stdout.trim();
-  } catch {
-    throw new Error('Git 操作失败：请检查仓库地址、版本和访问权限，并确认已安装 Git');
   }
 }
 
@@ -72,14 +44,6 @@ function validateRef(ref) {
     throw new Error('请通过 --ref 指定版本标签、分支或 commit');
   }
   return ref;
-}
-
-async function checkoutRepository(checkout, repository, ref) {
-  await mkdir(checkout);
-  await git(checkout, ['init', '--quiet']);
-  await git(checkout, ['fetch', '--quiet', '--depth=1', '--no-tags', '--', repository, ref]);
-  await git(checkout, ['checkout', '--quiet', '--detach', 'FETCH_HEAD']);
-  return git(checkout, ['rev-parse', 'HEAD']);
 }
 
 export async function readPluginRepository({ repository, ref = 'HEAD' }) {

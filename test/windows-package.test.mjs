@@ -19,7 +19,7 @@ test('Windows portable EXE works without system Node or Git and the registered l
   await assert.rejects(access(path.join(source, 'config.json')), { code: 'ENOENT' });
   await assert.rejects(access(path.join(source, '.data')), { code: 'ENOENT' });
   await access(path.join(source, 'runtime', 'LICENSE'));
-  await access(path.join(source, 'tools', 'git', 'LICENSE.txt'));
+  await assert.rejects(access(path.join(source, 'tools', 'git')), { code: 'ENOENT' });
   const root = await mkdtemp(path.join(os.tmpdir(), 'windows-package-'));
   const portable = path.join(root, "便携 & user's ! app");
   await cp(source, portable, { recursive: true });
@@ -71,7 +71,6 @@ test('Windows portable EXE works without system Node or Git and the registered l
   config.server = { ...config.server, port, idleShutdownMs: 10_000 };
   await writeFile(path.join(portable, 'config.json'), JSON.stringify(config));
 
-  const git = path.join(portable, 'tools', 'git', 'cmd', 'git.exe');
   const repository = path.join(root, 'plugin repository');
   const plugin = path.join(repository, 'plugins', 'portable-sample');
   await mkdir(plugin, { recursive: true });
@@ -82,10 +81,6 @@ test('Windows portable EXE works without system Node or Git and the registered l
     id: 'portable-sample', type: 'provider', apiVersion: 1, entry: './index.mjs', hosts: ['portable.example']
   }));
   await writeFile(path.join(plugin, 'index.mjs'), 'export function createAdapter() { return { match: () => false, resolve: async () => ({}) }; }');
-  await exec(git, ['init', '--quiet'], { cwd: repository, env });
-  await exec(git, ['add', '.'], { cwd: repository, env });
-  await exec(git, ['-c', 'user.name=Package Test', '-c', 'user.email=test@example.invalid', 'commit', '--quiet', '-m', 'sample'], { cwd: repository, env });
-
   // 模拟双击的无终端启动；等待 EXE 退出，不等待后台进程继承的管道 EOF。
   const launcher = spawn(path.join(portable, 'lulucute.exe'), ['--check'], {
     cwd: root, env, timeout: 45_000, windowsHide: true, stdio: 'ignore'
@@ -103,8 +98,10 @@ test('Windows portable EXE works without system Node or Git and the registered l
     assert.equal(response.ok, true, result.error);
     return result;
   }
-  const catalog = await api('/api/plugins/repository', { repository });
-  const installed = await api('/api/plugins/install', { catalogId: catalog.catalogId, id: 'portable-sample', enable: true });
+  const pluginSource = process.env.LULUCUTE_RAW_PLUGIN_INDEX || repository;
+  const pluginId = process.env.LULUCUTE_RAW_PLUGIN_INDEX ? 'raw-sample' : 'portable-sample';
+  const catalog = await api('/api/plugins/repository', { repository: pluginSource });
+  const installed = await api('/api/plugins/install', { catalogId: catalog.catalogId, id: pluginId, enable: true });
   assert.equal(installed.enabled, true);
   await api('/api/service/reload', {});
   const plugins = await api('/api/plugins/installed');

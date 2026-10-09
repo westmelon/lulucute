@@ -8,7 +8,6 @@ trap {
 
 if ($env:OS -ne 'Windows_NT') { throw 'Windows portable packages must be built on Windows.' }
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility') -Force
-Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Archive') -Force
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 $buildDirectory = Join-Path $projectDirectory 'dist'
 $packageDirectory = Join-Path $buildDirectory 'lulucute-windows-x64'
@@ -43,20 +42,6 @@ if (Test-Path $nodeLicense) {
 } else {
     Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/$nodeVersion/LICENSE" -OutFile (Join-Path $runtimeDirectory 'LICENSE')
 }
-
-$gitArchive = Join-Path $buildDirectory 'MinGit-2.56.0.2-64-bit.zip'
-$gitUrl = 'https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip'
-Invoke-WebRequest $gitUrl -OutFile $gitArchive
-$gitHash = (Get-FileHash $gitArchive -Algorithm SHA256).Hash
-if ($gitHash -ne 'DA35E72AA21C005A5A0D298CFBAE110BC1609A815730EA0DDE84B01A1B3CD3BE') {
-    throw 'Git archive checksum mismatch.'
-}
-$gitDirectory = Join-Path $packageDirectory 'tools\git'
-Expand-Archive $gitArchive -DestinationPath $gitDirectory
-foreach ($name in @('cmd\git.exe', 'usr\bin\ssh.exe', 'LICENSE.txt')) {
-    if (!(Test-Path (Join-Path $gitDirectory $name))) { throw "Git package is missing $name" }
-}
-Remove-Item $gitArchive
 
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (!(Test-Path $compiler)) { throw 'The .NET Framework C# compiler is unavailable.' }
