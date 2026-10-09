@@ -73,10 +73,8 @@ jobs:
           $result = $LASTEXITCODE
           $output | ForEach-Object { Write-Output $_ }
           if ($result -ne 0) {
-            $output | Select-Object -Last 40 | ForEach-Object {
-              $detail = ([string]$_).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error::$detail"
-            }
+            $detail = ($output | Out-String).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error::$detail"
             exit $result
           }
         env:
