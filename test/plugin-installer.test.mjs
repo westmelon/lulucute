@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { managePlugin, readPluginRepository } from '../src/core/plugin-installer.mjs';
 import { PluginManager } from '../src/core/plugin-manager.mjs';
@@ -137,7 +138,7 @@ test('CLI resolves the install directory beside the config without requiring a d
   await writeFile(config, JSON.stringify({ plugins: { directories: ['./custom/plugins'], enabled: [] } }));
   const before = await readFile(config, 'utf8');
   const script = new URL('../scripts/plugins.mjs', import.meta.url);
-  const { stdout } = await run(process.execPath, [script.pathname, 'install', 'sample', '--config', config,
+  const { stdout } = await run(process.execPath, [fileURLToPath(script), 'install', 'sample', '--config', config,
     '--repository', f.repository, '--ref', 'HEAD']);
   assert.match(stdout, /插件文件已就绪/);
   assert.equal(await readFile(path.join(f.root, 'custom/plugins/sample/index.mjs'), 'utf8'), source(1));

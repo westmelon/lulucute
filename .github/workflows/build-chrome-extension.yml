@@ -59,7 +59,15 @@ jobs:
         run: npm ci
 
       - name: Test Windows native messaging
-        run: node --test test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs test/plugin-installer.test.mjs
+        run: |
+          $output = & node --test test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs test/plugin-installer.test.mjs 2>&1
+          $result = $LASTEXITCODE
+          $output | ForEach-Object { Write-Output $_ }
+          if ($result -ne 0) {
+            $detail = ($output | Out-String).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error::$detail"
+            exit $result
+          }
 
       - name: Build extension assets
         run: npm run build:extension
