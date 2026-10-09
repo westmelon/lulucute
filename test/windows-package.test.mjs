@@ -13,7 +13,7 @@ const registryKey = 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.r
 
 test('Windows portable EXE works without system Node or Git and the registered launcher can restart it', {
   skip: process.platform !== 'win32' || !process.env.LULUCUTE_PORTABLE_DIRECTORY,
-  timeout: 60_000
+  timeout: 90_000
 }, async (t) => {
   const source = process.env.LULUCUTE_PORTABLE_DIRECTORY;
   await assert.rejects(access(path.join(source, 'config.json')), { code: 'ENOENT' });
@@ -44,7 +44,7 @@ test('Windows portable EXE works without system Node or Git and the registered l
   const endpoint = `http://127.0.0.1:${port}`;
   let completed = false;
   async function waitForIdleExit() {
-    for (let index = 0; index < 100; index += 1) {
+    for (let index = 0; index < 200; index += 1) {
       try { await fetch(`${endpoint}/api/state`, { signal: AbortSignal.timeout(500) }); } catch {
         await new Promise((resolve) => setTimeout(resolve, 150));
         return;
@@ -67,7 +67,8 @@ test('Windows portable EXE works without system Node or Git and the registered l
   });
   const config = JSON.parse(await readFile(path.join(portable, 'config.example.json'), 'utf8'));
   config.downloadRoot = path.join(root, 'downloads');
-  config.server = { ...config.server, port, idleShutdownMs: 2_000 };
+  // 首次运行 EXE 的 .NET 初始化和注册需留出时间，之后仍验证真实空闲退出。
+  config.server = { ...config.server, port, idleShutdownMs: 10_000 };
   await writeFile(path.join(portable, 'config.json'), JSON.stringify(config));
 
   const git = path.join(portable, 'tools', 'git', 'cmd', 'git.exe');
