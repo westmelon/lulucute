@@ -42,6 +42,7 @@ test('Windows portable EXE works without system Node or Git and the registered l
   const port = reservation.address().port;
   await new Promise((resolve) => reservation.close(resolve));
   const endpoint = `http://127.0.0.1:${port}`;
+  let completed = false;
   async function waitForIdleExit() {
     for (let index = 0; index < 100; index += 1) {
       try { await fetch(`${endpoint}/api/state`, { signal: AbortSignal.timeout(500) }); } catch {
@@ -53,6 +54,9 @@ test('Windows portable EXE works without system Node or Git and the registered l
     assert.fail('Packaged service did not stop after its idle timeout');
   }
   t.after(async () => {
+    if (!completed) {
+      t.diagnostic(await readFile(path.join(portable, '.data', 'server.log'), 'utf8').catch(() => 'No packaged service log'));
+    }
     if (previousManifest) {
       await exec('reg.exe', ['add', registryKey, '/ve', '/t', 'REG_SZ', '/d', previousManifest, '/f', '/reg:32']);
     } else {
@@ -88,7 +92,7 @@ test('Windows portable EXE works without system Node or Git and the registered l
       method: body ? 'POST' : 'GET',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {})
-    });
+    }).catch((error) => { throw new Error(`Packaged service request failed: ${route}`, { cause: error }); });
     const result = await response.json();
     assert.equal(response.ok, true, result.error);
     return result;
@@ -125,4 +129,5 @@ test('Windows portable EXE works without system Node or Git and the registered l
   assert.deepEqual(JSON.parse(response.subarray(4).toString('utf8')), { ok: true, started: true });
   const reloaded = await api('/api/plugins/installed');
   assert.equal(reloaded.plugins[0].enabled, true);
+  completed = true;
 });
