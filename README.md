@@ -19,6 +19,8 @@
 
 ## 安装
 
+Windows 用户可以直接使用下面的便携包，无需单独安装 Node.js 或 Git。
+
 要求 Node.js 20+、Google Chrome 和 Git（用于下载安装插件）。
 
 ```bash
@@ -45,23 +47,19 @@ npm start -- \
 
 ## 可视化界面
 
-首次安装 Native Messaging 启动器：
+首次手动启动本地服务：
 
 ```bash
-npm run install:native-host
+npm run server -- --config config.json
 ```
 
-这个命令会在当前用户的 Chrome 配置中注册启动器。随后加载扩展：
+Windows 和 macOS 会在服务成功启动后，自动向当前用户的 Google Chrome 注册 Native Messaging 启动器。Windows 写入当前用户的注册表，无需管理员权限；macOS 使用用户的 Chrome 配置目录。随后加载扩展：
 
 1. 打开 `chrome://extensions/` 并启用“开发者模式”。
 2. 点击“加载已解压的扩展程序”。
 3. 选择项目中的 `extension` 目录。
 4. 点击工具栏里的 lulucute，打开侧边栏。
-5. 如果之前未配置令牌，先手动启动一次服务，在连接设置中填入终端显示的访问令牌并保存：
-
-```bash
-npm run server -- --config config.json
-```
+5. 在连接设置中填写服务地址（默认 `http://127.0.0.1:43127`）和终端显示的 `Extension token`，保存。首次配置完成后，可以按 `Ctrl+C` 停止手动启动的服务，再打开扩展验证自动唤醒。
 
 以后侧边栏访问本地 API 失败时，会通过 Native Messaging 自动启动服务并重试请求。服务只监听 `127.0.0.1`；没有等待或运行中的任务达到 `server.idleShutdownMs` 后会自动退出，历史任务记录不受影响。默认空闲时间为 2 分钟，设为 `0` 可以保持服务常驻：
 
@@ -73,7 +71,13 @@ npm run server -- --config config.json
 }
 ```
 
-项目目录或 Node.js 安装路径变化后，需要重新执行 `npm run install:native-host`。这次更新为扩展加入了固定 ID；在 `chrome://extensions/` 中确认扩展 ID 为安装命令输出的值，如果不同，需要移除旧扩展并重新加载 `extension` 目录。首次重新安装后如果连接令牌为空，需要重新填入一次。以后更新扩展只需重新加载。普通网页形式的本地仪表盘不能在服务完全退出后自行唤醒进程，这项能力只属于 Chrome 扩展。
+项目目录或 Node.js 安装路径变化后，再手动启动一次服务即可更新注册；注册始终使用这次启动传入的配置文件路径。扩展 ID 应为终端输出的 `adnhnlfllcfaaicijnclpeaogmebpclf`，如果不同，需要移除旧扩展并重新加载 `extension` 目录。首次重新安装后如果连接令牌为空，需要重新填入一次。以后更新扩展只需重新加载。普通网页形式的本地仪表盘不能在服务完全退出后自行唤醒进程，这项能力只属于 Chrome 扩展。
+
+自动注册失败不会阻止本地服务运行，终端会显示错误。解决权限或路径问题后，可以单独重试注册，已有用法也保留：
+
+```bash
+npm run install:native-host -- --config config.json
+```
 
 侧边栏根据已加载插件识别当前页面，可以加入队列、查看实时阶段、暂停后续任务、重试失败任务和打开归档目录。也可以直接使用浏览器打开本地仪表盘；普通网页模式下资源 URL 可以手动编辑。
 
@@ -81,16 +85,64 @@ npm run server -- --config config.json
 
 令牌保存在配置目录的 `.data/server-token`，文件权限为当前用户可读写；扩展把令牌保存在 Chrome 本地存储。API 只接受本机请求和 Chrome 扩展来源。常驻服务会持有任务队列锁，服务运行期间不要同时执行 CLI 下载命令。
 
+### Windows 便携版
+
+要求 Windows 10/11 x64、系统自带的 .NET Framework 4.8 和 Google Chrome。便携包内置 Node.js、Git（含 SSH）、服务依赖和扩展文件。
+
+1. 在 [Actions](https://github.com/westmelon/lulucute/actions/workflows/build-chrome-extension.yml) 中选择成功的运行，下载 **lulucute-windows-x64** 产物。
+2. 解压下载产物，再解压其中的 `lulucute-windows-x64.zip` 到固定的可写目录，双击 `lulucute.exe`。保留整个目录，EXE 依赖其中的配套文件。
+3. 首次启动自动创建 `config.json`，默认下载目录为用户目录下的 `Downloads/lulucute`；需要自定义时修改 `config.json` 的 `downloadRoot`。
+4. 首次连接窗口会显示服务地址和扩展目录，点击“复制令牌”，在 Chrome 加载包内的 `extension` 目录后，将令牌粘贴到扩展连接设置并保存。自动打开的网页界面也使用相同的地址和令牌。
+5. 以后打开扩展即可自动拉起服务；双击 EXE 可再次启动服务并打开网页界面。移动便携包后，再双击一次更新启动器注册。
+
+便携版不安装开机启动项，也不需要保留终端。配置、任务记录、登录资料和已安装插件保存在便携目录，后台日志默认在 `.data/server.log`。更新时先停止旧服务，用新包替换程序文件，保留 `config.json`、`.data`、`plugins` 和插件备份；运行中的文件不要直接覆盖。当前 EXE 未签名，Windows 可能显示未知发布者提示。私有插件仓库仍需要用户已有的 SSH 密钥或 Git 凭据。
+
+开发者可在 Windows 使用 64 位 Node.js 构建：
+
+```powershell
+npm.cmd ci
+npm.cmd run build:extension
+npm.cmd run build:windows
+```
+
+输出为 `dist/lulucute-windows-x64.zip` 和对应的 SHA-256 校验文件。再次构建前移走或删除旧的 `dist/lulucute-windows-x64` 目录。构建固定使用 [Git for Windows MinGit 2.56.0.2](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2)，下载后校验 SHA-256；包内保留 Node.js、Git 和依赖的许可证。Actions 会验证 EXE 启动、内置 Git 安装与加载插件，以及注册启动器在服务退出后再次拉起服务。
+
+### Windows 源码首次启动
+
+安装 Node.js 20+、Google Chrome 和 Git 后，在项目目录的 PowerShell 中执行（已有 `config.json` 时跳过复制）：
+
+```powershell
+npm.cmd ci
+npm.cmd run build:extension
+Copy-Item config.example.json config.json
+```
+
+编辑 `config.json`，将 `downloadRoot` 改为真实的 Windows 绝对路径，例如 `"D:/Downloads/lulucute"`，然后启动：
+
+```powershell
+npm.cmd run server -- --config config.json
+```
+
+首次按上面的步骤加载扩展并保存令牌，以后打开扩展即可自动启动后台服务，不需要保留终端窗口。仍需保留本机的项目文件、依赖与 Node.js。后台服务日志位于配置 `server.tokenFile` 所在目录的 `server.log`，默认是 `.data/server.log`。
+
+如需移除 Windows 自动唤醒注册，在 PowerShell 执行：
+
+```powershell
+reg.exe delete "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.resourcehub.launcher" /f /reg:32
+```
+
+再次手动启动服务会重新注册。Linux 当前可以手动运行本地服务，但暂不支持自动注册启动器。
+
 ### 下载 GitHub Actions 扩展包
 
-推送到 `main`、提交 PR 或手动运行 **Build Chrome extension** 工作流时，会安装依赖、构建扩展、运行扩展与 Native Messaging 测试，并生成 ZIP 包。
+推送到 `main`、提交 PR 或手动运行 **Build Chrome extension** 工作流时，会安装依赖、构建扩展、运行扩展与 Native Messaging 测试，并生成扩展 ZIP 和 Windows 便携包。
 
 1. 打开仓库的 [Actions 页面](https://github.com/westmelon/lulucute/actions/workflows/build-chrome-extension.yml)，选择成功的运行；也可以点击 **Run workflow** 手动构建。
 2. 在运行页面的 **Artifacts** 中下载 `lulucute-chrome`，产物保留 30 天。
 3. 解压下载产物，再将其中的 `lulucute-chrome.zip` 解压到固定目录；该目录根部包含 `manifest.json`。
 4. 在 `chrome://extensions/` 启用开发者模式，点击“加载已解压的扩展程序”，选择该目录。
 
-ZIP 仅包含 Chrome 扩展。仍需按上面的安装步骤在本机安装项目依赖、配置下载目录并运行 `npm run install:native-host`。
+ZIP 仅包含 Chrome 扩展。仍需按上面的安装步骤在本机安装项目依赖、配置下载目录并手动启动一次服务，完成自动注册和连接设置。
 
 ## 插件安装与更新
 

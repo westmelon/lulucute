@@ -2,6 +2,7 @@ import path from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import http from 'node:http';
 
 const STATIC_FILES = new Map([
@@ -212,7 +213,11 @@ export class LocalApiServer {
       if (!directory || !relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
         throw new Error('Task does not have a valid archive directory');
       }
-      spawn('/usr/bin/open', [directory], { detached: true, stdio: 'ignore' }).unref();
+      const child = spawn(process.platform === 'win32' ? 'explorer.exe' : '/usr/bin/open', [directory], {
+        detached: true, stdio: 'ignore', windowsHide: true
+      });
+      await once(child, 'spawn');
+      child.unref();
       return this.sendJson(response, 202, { opened: true });
     }
 

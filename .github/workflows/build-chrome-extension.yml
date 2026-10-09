@@ -29,7 +29,7 @@ jobs:
         run: npm run build:extension
 
       - name: Test extension and native messaging
-        run: node --test test/extension.test.mjs test/native-host.test.mjs
+        run: node --test test/extension.test.mjs test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs
 
       - name: Package extension
         working-directory: extension
@@ -40,5 +40,44 @@ jobs:
         with:
           name: lulucute-chrome
           path: ${{ runner.temp }}/lulucute-chrome.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Windows native messaging
+        run: node --test test/native-host.test.mjs test/native-host-registration.test.mjs test/portable-service.test.mjs
+
+      - name: Build extension assets
+        run: npm run build:extension
+
+      - name: Build Windows portable package
+        run: npm run build:windows
+
+      - name: Verify Windows executable and bundled tools
+        run: node --test test/windows-package.test.mjs
+        env:
+          LULUCUTE_PORTABLE_DIRECTORY: ${{ github.workspace }}/dist/lulucute-windows-x64
+
+      - name: Upload Windows portable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lulucute-windows-x64
+          path: |
+            dist/lulucute-windows-x64.zip
+            dist/lulucute-windows-x64.zip.sha256
           if-no-files-found: error
           retention-days: 30

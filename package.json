@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build:extension": "node scripts/build-extension.mjs",
+    "build:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "install:native-host": "node scripts/install-native-host.mjs",
     "start": "node src/cli.mjs",
     "server": "node src/server.mjs",

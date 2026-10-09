@@ -10,6 +10,7 @@ import { LocalApiServer } from './core/local-api-server.mjs';
 import { loadLocalPlugins } from './core/plugin-loader.mjs';
 import { waitForShutdown } from './core/idle-shutdown.mjs';
 import { PluginManager } from './core/plugin-manager.mjs';
+import { installNativeHost } from './core/native-host-registration.mjs';
 
 function parseArguments(argv) {
   let config;
@@ -79,6 +80,15 @@ async function main() {
     if (!args.managed) {
       console.log(`[resource-downloader] Extension token: ${token}`);
       console.log(`[resource-downloader] Load unpacked extension: ${staticDirectory}`);
+      if (['darwin', 'win32'].includes(process.platform)) {
+        try {
+          const { extensionId } = await installNativeHost({ configPath: args.config });
+          console.log(`[resource-downloader] Native host registered for extension ${extensionId}`);
+        } catch (error) {
+          console.warn(`[resource-downloader] 自动注册启动器失败，服务仍可手动使用：${error.message}`);
+          console.warn('[resource-downloader] 可运行 npm run install:native-host -- --config <配置文件路径> 重试。');
+        }
+      }
     }
     const shutdown = waitForShutdown({
       worker,
