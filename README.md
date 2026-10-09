@@ -81,6 +81,17 @@ npm run server -- --config config.json
 
 令牌保存在配置目录的 `.data/server-token`，文件权限为当前用户可读写；扩展把令牌保存在 Chrome 本地存储。API 只接受本机请求和 Chrome 扩展来源。常驻服务会持有任务队列锁，服务运行期间不要同时执行 CLI 下载命令。
 
+### 下载 GitHub Actions 扩展包
+
+推送到 `main`、提交 PR 或手动运行 **Build Chrome extension** 工作流时，会安装依赖、构建扩展、运行扩展与 Native Messaging 测试，并生成 ZIP 包。
+
+1. 打开仓库的 [Actions 页面](https://github.com/westmelon/lulucute/actions/workflows/build-chrome-extension.yml)，选择成功的运行；也可以点击 **Run workflow** 手动构建。
+2. 在运行页面的 **Artifacts** 中下载 `lulucute-chrome`，产物保留 30 天。
+3. 解压下载产物，再将其中的 `lulucute-chrome.zip` 解压到固定目录；该目录根部包含 `manifest.json`。
+4. 在 `chrome://extensions/` 启用开发者模式，点击“加载已解压的扩展程序”，选择该目录。
+
+ZIP 仅包含 Chrome 扩展。仍需按上面的安装步骤在本机安装项目依赖、配置下载目录并运行 `npm run install:native-host`。
+
 ## 插件安装与更新
 
 页面顶部点击「插件安装」（拼图图标），无需填写仓库即可查看已安装插件的名称和配置启用状态，可手动刷新，安装成功后自动更新。已安装插件旁可点击「禁用」或「启用」，只保存配置，保留插件文件。安装或更改启用配置后点击「重新加载服务」，服务会读取插件配置并刷新站点识别与下载处理器，页面连接和队列暂停状态保持不变；失败时保留原运行插件。下载、登录或其他插件操作期间不能更改配置或重新加载。已安装列表和仓库列表均按「网站插件」「网盘插件」分组：`forum`、`bundle` 为网站插件，`provider` 为网盘插件。填入插件 Git 仓库地址或本地绝对路径后自动列出可安装插件。版本留空读取默认分支，也可指定标签或 commit；选择列表中的插件安装，可勾选安装后启用，重新加载服务后生效。列表显示已安装状态与 API 兼容性，已安装插件仍通过命令行更新或回滚。

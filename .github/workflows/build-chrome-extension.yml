@@ -1,0 +1,44 @@
+name: Build Chrome extension
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build:extension
+
+      - name: Test extension and native messaging
+        run: node --test test/extension.test.mjs test/native-host.test.mjs
+
+      - name: Package extension
+        working-directory: extension
+        run: zip -r "$RUNNER_TEMP/lulucute-chrome.zip" .
+
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lulucute-chrome
+          path: ${{ runner.temp }}/lulucute-chrome.zip
+          if-no-files-found: error
+          retention-days: 30
