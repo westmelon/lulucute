@@ -33,7 +33,7 @@ test('Windows portable EXE works without system Node or Git and the registered l
     $value = $null
     if ($key) { $value = $key.GetValue(''); $key.Dispose() }
     $base.Dispose()
-    ConvertTo-Json -InputObject $value -Compress
+    if ($null -eq $value) { 'null' } else { ConvertTo-Json -InputObject $value -Compress }
   `]);
   const previousManifest = JSON.parse(registryValue.trim());
   const reservation = net.createServer();
