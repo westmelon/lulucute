@@ -33,7 +33,7 @@ async function validatePackage(directory, id, { allowUnsupportedApi = false, che
   const manifest = await inspectPluginPackage(directory, { allowUnsupportedApi });
   if (manifest.id !== id) throw new Error(`插件 ID 不匹配：需要 ${id}，实际为 ${manifest.id}`);
   for (const file of files.filter((file) => checkSyntax && /\.(?:mjs|js)$/.test(file))) {
-    try { await run(process.execPath, ['--check', file], { timeout: 10_000 }); }
+    try { await run(process.execPath, ['--check', file], { timeout: 10_000, windowsHide: true }); }
     catch { throw new Error(`插件 JavaScript 语法无效：${path.relative(directory, file)}`); }
   }
   return manifest;
