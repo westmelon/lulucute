@@ -178,9 +178,10 @@ h3 {
 .repository-plugin strong { font-size: 12px; overflow-wrap: anywhere; }
 .repository-plugin p { grid-column: 1 / -1; margin: 0; color: #52605d; font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
 .repository-plugin button { grid-column: 2; grid-row: 1; margin-top: 0; }
-#installed-plugins .repository-plugin { grid-template-columns: minmax(0, 1fr) auto auto; }
+#installed-plugins .repository-plugin { grid-template-columns: minmax(0, 1fr) auto auto auto; }
 #installed-plugins .repository-plugin p { grid-column: 2; text-align: right; }
 #installed-plugins .repository-plugin button { grid-column: 3; }
+#installed-plugins .repository-plugin [data-uninstall-plugin-id] { grid-column: 4; }
 
 .settings-panel > label,
 .plugins-panel form label {

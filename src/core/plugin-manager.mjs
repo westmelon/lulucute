@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { enablePlugin, loadConfig, setPluginEnabled } from '../config.mjs';
-import { loadLocalPlugins } from './plugin-loader.mjs';
+import { findPluginManifests, loadLocalPlugins } from './plugin-loader.mjs';
 import { listInstalledPlugins, managePlugin, readPluginRepository } from './plugin-installer.mjs';
 
 export class PluginManager {
@@ -42,6 +44,23 @@ export class PluginManager {
     const config = { ...this.config, plugins: saved.plugins };
     const plugins = await loadLocalPlugins(config);
     return { config, plugins };
+  }
+
+  async uninstall({ id }) {
+    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error('插件 ID 无效');
+    await listInstalledPlugins(this.config.plugins.directories);
+    for (const root of this.config.plugins.directories) {
+      for (const manifestPath of await findPluginManifests(root)) {
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        if (manifest.id !== id) continue;
+        if (path.basename(path.dirname(manifestPath)) !== id) throw new Error('卸载要求插件目录名与 ID 一致');
+        const result = await managePlugin({ action: 'uninstall', id,
+          directory: path.dirname(path.dirname(manifestPath)), configPath: this.configPath });
+        this.config.plugins.enabled = this.config.plugins.enabled.filter((item) => item !== id);
+        return { ...result, enabled: false, restartRequired: true };
+      }
+    }
+    throw new Error('插件未安装');
   }
 
   async install({ catalogId, id, enable = false }) {

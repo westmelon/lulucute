@@ -6,6 +6,8 @@ import { promisify } from 'node:util';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { inspectPluginPackage, loadLocalPlugins, PLUGIN_API_VERSION } from './plugin-loader.mjs';
 import { checkoutRepository, normalizeRepository } from './plugin-source.mjs';
+import { installPluginTools } from './plugin-tools.mjs';
+import { setPluginEnabled } from '../config.mjs';
 
 const run = promisify(execFile);
 const metadataFile = '.resource-hub-install.json';
@@ -90,6 +92,9 @@ async function replacePackage(staged, target, backupRoot, id) {
   let backup;
   if (await exists(target)) {
     if (!(await lstat(target)).isDirectory()) throw new Error('安装目标必须是普通目录');
+    if (await exists(path.dirname(backupRoot)) && !(await lstat(path.dirname(backupRoot))).isDirectory()) {
+      throw new Error('插件备份目录不能是符号链接');
+    }
     await mkdir(backupRoot, { recursive: true });
     backup = path.join(backupRoot, `${Date.now()}-${randomUUID()}`);
     await rename(target, backup);
@@ -102,8 +107,8 @@ async function replacePackage(staged, target, backupRoot, id) {
   return backup;
 }
 
-export async function managePlugin({ action, id, directory, repository, ref }) {
-  if (!['install', 'update', 'rollback'].includes(action)) throw new Error('操作必须为 install、update 或 rollback');
+export async function managePlugin({ action, id, directory, repository, ref, configPath }) {
+  if (!['install', 'update', 'rollback', 'uninstall'].includes(action)) throw new Error('操作必须为 install、update、rollback 或 uninstall');
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id || '')) throw new Error('插件 ID 无效');
   const root = path.resolve(directory);
   const parent = path.dirname(root);
@@ -120,6 +125,29 @@ export async function managePlugin({ action, id, directory, repository, ref }) {
   try {
     await mkdir(root, { recursive: true });
     if (!(await lstat(root)).isDirectory()) throw new Error('插件安装目录不能是符号链接');
+    if (action === 'uninstall') {
+      if (!(await exists(target))) throw new Error(`插件 ${id} 尚未安装`);
+      await validatePackage(target, id, { checkSyntax: false, allowUnsupportedApi: true });
+      staging = await mkdtemp(path.join(parent, `.${path.basename(root)}-stage-`));
+      const removed = path.join(staging, 'removed');
+      const backups = path.join(staging, 'backups');
+      await rename(target, removed);
+      let movedBackups = false;
+      try {
+        if (await exists(backupRoot)) {
+          if (!(await lstat(path.dirname(backupRoot))).isDirectory()) throw new Error('插件备份目录不能是符号链接');
+          if (!(await lstat(backupRoot)).isDirectory()) throw new Error('插件备份目录不能是符号链接');
+          await rename(backupRoot, backups);
+          movedBackups = true;
+        }
+        if (configPath) await setPluginEnabled(configPath, id, false);
+      } catch (error) {
+        if (movedBackups) await rename(backups, backupRoot);
+        await rename(removed, target);
+        throw error;
+      }
+      return { id, action, directory: target };
+    }
     if (action === 'rollback') {
       const backups = await exists(backupRoot) ? await readdir(backupRoot) : [];
       const candidates = backups.filter((name) => /^\d+-[a-f0-9-]+$/.test(name)).sort().reverse();
@@ -147,8 +175,10 @@ export async function managePlugin({ action, id, directory, repository, ref }) {
     // 拒绝仓库 plugins 根目录的符号链接。
     if (!(await lstat(path.dirname(source))).isDirectory()) throw new Error('仓库 plugins 必须是普通目录');
     const manifest = await validatePackage(source, id);
+    if (await exists(path.join(source, '.tools'))) throw new Error('插件仓库不能包含安装器专用的 .tools 目录');
     const staged = path.join(staging, 'package');
     await cp(source, staged, { recursive: true });
+    await installPluginTools(staged, manifest.tools);
     await writeFile(path.join(staged, metadataFile), `${JSON.stringify({ repository, ref, commit,
       installedAt: new Date().toISOString() }, null, 2)}\n`);
     const backup = await replacePackage(staged, target, backupRoot, id);

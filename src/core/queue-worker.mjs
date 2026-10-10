@@ -156,7 +156,7 @@ export class QueueWorker {
     }
   }
 
-  async withPluginOperation(label, action) {
+  async withPluginOperation(label, action, reloadRuntime) {
     if (this.running || this.currentTaskId || this.loginStatus || this.reconfiguring || this.closing) {
       throw new Error('任务运行、登录或配置修改期间，请稍后管理插件');
     }
@@ -167,6 +167,15 @@ export class QueueWorker {
       try {
         const result = await action();
         if (result.restartRequired) this.pluginsRestartRequired = true;
+        if (reloadRuntime) {
+          try {
+            await this.applyPluginRuntime(reloadRuntime);
+            result.restartRequired = false;
+          } catch (error) {
+            this.paused = true;
+            throw new Error(`插件已卸载，但重新加载失败，队列已暂停：${error.message}`);
+          }
+        }
         return result;
       } finally {
         this.reconfiguring = false;
@@ -181,18 +190,22 @@ export class QueueWorker {
 
   async reloadService(loadRuntime) {
     await this.withPluginOperation('正在重新加载服务', async () => {
-      const { config, plugins } = await loadRuntime();
-      if (this.closing) throw new Error('本地服务正在关闭');
-      if (this.context) await this.context.close();
-      this.context = null;
-      this.config.plugins = config.plugins;
-      this.plugins = plugins;
-      this.forums = plugins.sites;
-      this.queue.forums = plugins.forums;
-      this.pluginsRestartRequired = false;
+      await this.applyPluginRuntime(loadRuntime);
       return { restartRequired: false };
     });
     return this.state();
+  }
+
+  async applyPluginRuntime(loadRuntime) {
+    const { config, plugins } = await loadRuntime();
+    if (this.closing) throw new Error('本地服务正在关闭');
+    if (this.context) await this.context.close();
+    this.context = null;
+    this.config.plugins = config.plugins;
+    this.plugins = plugins;
+    this.forums = plugins.sites;
+    this.queue.forums = plugins.forums;
+    this.pluginsRestartRequired = false;
   }
 
   async openLogin(pluginId) {

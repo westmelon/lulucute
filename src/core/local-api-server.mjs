@@ -185,6 +185,13 @@ export class LocalApiServer {
         () => this.pluginManager.setEnabled(body));
       return this.sendJson(response, 200, result);
     }
+    if (request.method === 'POST' && url.pathname === '/api/plugins/uninstall') {
+      if (!this.pluginManager) throw new Error('插件管理未配置');
+      const body = await readJson(request);
+      const result = await this.worker.withPluginOperation('正在卸载插件',
+        () => this.pluginManager.uninstall(body), () => this.pluginManager.loadRuntime());
+      return this.sendJson(response, 200, { ...result, state: this.worker.state() });
+    }
     if (request.method === 'POST' && url.pathname === '/api/service/reload') {
       if (!this.pluginManager) throw new Error('插件管理未配置');
       const state = await this.worker.reloadService(() => this.pluginManager.loadRuntime());

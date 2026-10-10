@@ -23,6 +23,7 @@
 - `hosts`：插件声明支持的域名，支持 `*.example.com`。侧边栏用网站插件的域名识别当前页面，后端仍以适配器的 `match()` 结果为准。已安装但未启用的插件域名会阻止通用直链兜底，避免下载分享网页。
 - `loginUrl`：可选的 HTTP(S) 登录地址，由核心打开复用现有资料目录的登录窗口。
 - `actions`：可选的界面动作数组，见下文。
+- `tools`：可选的插件附带工具声明，按平台自动安装，见下文。
 
 单适配器入口导出 `createAdapter()`，也可以使用默认导出。工厂接收已经解析的应用配置、只读 manifest 和通用服务：
 
@@ -44,6 +45,35 @@ export function createAdapters({ config, services }) {
   };
 }
 ```
+
+## 插件附带工具
+
+`plugin.json` 可声明 `tools`，由安装器下载工具，不执行插件入口或安装脚本。每个工具位于插件目录的 `.tools/<工具 ID>/`，随插件更新、回滚和卸载；`.tools` 是安装器保留目录，源码包不能包含它。
+
+```json
+{
+  "tools": {
+    "ffmpeg": {
+      "version": "6.1.1",
+      "platforms": {
+        "win32-x64": {
+          "executable": "ffmpeg.exe",
+          "downloads": [{
+            "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz",
+            "sha256": "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77",
+            "format": "gzip",
+            "path": "ffmpeg.exe"
+          }]
+        }
+      }
+    }
+  }
+}
+```
+
+平台键使用 Node.js 的系统与架构名，例如 `win32-x64`、`darwin-arm64`、`linux-x64`。每个下载声明必须包含 HTTPS 地址及固定文件的 SHA-256；格式支持 `file`、`gzip`、`tar` 和 `zip`。`file`/`gzip` 通过 `path` 指定目标文件；归档通过 `files` 对象指定「目标相对路径 → 归档成员路径」，仅输出指定成员，不展开归档目录。tar 使用系统工具；Windows 10/11 和 macOS 的系统 tar 也支持 ZIP，Linux 插件应提供 tar 格式。下载及每个解压文件最多 150 MB。发布工具时应同时声明许可证和构建来源说明的下载，示例仅展示可执行文件字段。
+
+工具在临时包中全部校验并准备成功后才替换插件；下载失败不覆盖已有插件或备份。加载器通过 `services.toolPaths[工具 ID]` 提供可执行文件的绝对路径，插件应优先保留用户明确配置的路径，再使用附带工具。未通过安装器安装的旧插件没有附带工具时，可继续从系统 PATH 查找。安装目录中的 `source.json` 记录工具版本、来源和校验声明。附带工具使用原上游许可证，不改变插件许可证。
 
 ## 论坛适配器
 
@@ -150,9 +180,10 @@ class MyProviderAdapter {
 npm run plugins -- install my-forum --repository <仓库地址或本地路径> --ref <分支、标签或commit> --config config.json
 npm run plugins -- update my-forum --ref <新版本> --config config.json
 npm run plugins -- rollback my-forum --config config.json
+npm run plugins -- uninstall my-forum --config config.json
 ```
 
-安装器仅校验包结构与语法，不执行入口。API 版本相同不代表代码可信；插件接口完整性和工厂配置仍在服务启动时验证。安装记录含来源、ref、commit；更新保留旧版本供回滚。更新和回滚前停止服务，重启后生效。
+安装器仅校验包结构与语法，不执行入口。API 版本相同不代表代码可信；插件接口完整性和工厂配置仍在服务启动时验证。安装记录含来源、ref、commit；更新保留旧版本供回滚。命令行更新、回滚和卸载前停止服务，重启后生效。
 
 1. 使用安装命令，或将插件目录复制到 `plugins/`，或把它的父目录加入 `plugins.directories`。
 2. 将插件 `id` 加入 `plugins.enabled`。

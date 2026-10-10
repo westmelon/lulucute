@@ -207,14 +207,16 @@ test('plugin mutations and service reload require authentication and allowed ori
   const calls = [];
   const token = 'local-plugin-token';
   const server = new LocalApiServer({ token, downloadRoot: '/tmp/downloads', staticDirectory: path.resolve('extension'),
-    worker: { subscribe: () => () => {}, withPluginOperation: async (label, action) => { calls.push(label); return action(); },
+    worker: { subscribe: () => () => {}, state: () => ({}),
+      withPluginOperation: async (label, action, reload) => { calls.push(label); const result = await action(); if (reload) await reload(); return result; },
       reloadService: async (load) => { calls.push('reload'); await load(); return { pluginsRestartRequired: false }; } },
     pluginManager: { browse: async (body) => ({ repository: body.repository }),
       setEnabled: async (body) => ({ id: body.id, enabled: body.enabled, restartRequired: true }),
+      uninstall: async (body) => ({ id: body.id, restartRequired: true }),
       loadRuntime: async () => ({}),
       install: async (body) => ({ id: body.id, restartRequired: true }) } });
   t.after(() => server.unsubscribe());
-  for (const route of ['/api/plugins/repository', '/api/plugins/install', '/api/plugins/enabled', '/api/service/reload']) {
+  for (const route of ['/api/plugins/repository', '/api/plugins/install', '/api/plugins/enabled', '/api/plugins/uninstall', '/api/service/reload']) {
     for (const [headers, expected] of [[{}, 401],
       [{ authorization: `Bearer ${token}`, origin: 'https://untrusted.example' }, 403],
       [{ authorization: `Bearer ${token}` }, 200]]) {
@@ -229,5 +231,5 @@ test('plugin mutations and service reload require authentication and allowed ori
         { state: { pluginsRestartRequired: false } });
     }
   }
-  assert.deepEqual(calls, ['正在读取插件列表', '正在安装插件', '正在保存插件配置', 'reload']);
+  assert.deepEqual(calls, ['正在读取插件列表', '正在安装插件', '正在保存插件配置', '正在卸载插件', 'reload']);
 });

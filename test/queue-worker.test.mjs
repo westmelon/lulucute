@@ -9,6 +9,32 @@ import { EventEmitter } from 'node:events';
 const testPlugins = { manifests: [{ id: 'example-login', type: 'forum', hosts: ['example.com'],
   loginUrl: 'https://example.com/login' }] };
 
+test('uninstall reloads plugins before queue guards are released and pauses on reload failure', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'uninstall-worker-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const queue = await new TaskQueue(path.join(root, 'tasks.json')).open();
+  t.after(() => queue.close());
+  const worker = new QueueWorker({ queue, config: { plugins: { enabled: ['removed'] } }, log: () => {} });
+  t.after(() => worker.close());
+  worker.pause();
+  const plugins = { sites: [], forums: [], manifests: [], providers: [] };
+  const result = await worker.withPluginOperation('卸载', async () => ({ restartRequired: true }), async () => {
+    assert.equal(worker.reconfiguring, true);
+    assert.equal(worker.pluginOperation, '卸载');
+    return { config: { plugins: { enabled: [] } }, plugins };
+  });
+  assert.equal(result.restartRequired, false);
+  assert.equal(worker.plugins, plugins);
+  assert.equal(worker.state().pluginsRestartRequired, false);
+  assert.equal(worker.state().paused, true);
+  worker.paused = false;
+  await assert.rejects(worker.withPluginOperation('卸载', async () => ({ restartRequired: true }),
+    async () => { throw new Error('broken-other-plugin'); }), /已卸载.*队列已暂停.*broken-other-plugin/);
+  assert.equal(worker.state().paused, true);
+  assert.equal(worker.state().pluginsRestartRequired, true);
+  assert.equal(worker.state().pluginOperation, null);
+});
+
 test('QueueWorker runs pending tasks sequentially and closes its browser', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'queue-worker-'));
   t.after(() => rm(root, { recursive: true, force: true }));

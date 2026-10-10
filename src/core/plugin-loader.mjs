@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { Aria2Downloader } from './aria2-downloader.mjs';
 import { ExternalDownloadMonitor } from './external-download-monitor.mjs';
 import { allocateAvailablePath, sanitizeSegment } from './path-policy.mjs';
+import { pluginToolPaths, validatePluginTools } from './plugin-tools.mjs';
 
 export const pluginServices = Object.freeze({
   Aria2Downloader, ExternalDownloadMonitor, allocateAvailablePath, sanitizeSegment
@@ -15,7 +16,7 @@ const REQUIRED_METHODS = {
   provider: ['match', 'resolve']
 };
 
-async function findPluginManifests(root) {
+export async function findPluginManifests(root) {
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
@@ -28,7 +29,7 @@ async function findPluginManifests(root) {
     return [path.join(root, 'plugin.json')];
   }
   const nested = await Promise.all(entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && entry.name !== '.tools')
     .map((entry) => findPluginManifests(path.join(root, entry.name))));
   return nested.flat();
 }
@@ -84,6 +85,7 @@ function validateManifest(manifest, manifestPath, { allowUnsupportedApi = false 
       ids.add(action.id);
     }
   }
+  validatePluginTools(manifest.tools);
   return manifest;
 }
 
@@ -133,7 +135,9 @@ async function loadAdapter(manifestPath, config) {
   if (typeof createAdapter !== 'function') {
     throw new Error(`Plugin ${manifest.id} must export ${manifest.type === 'bundle' ? 'createAdapters' : 'createAdapter'}() or a default factory`);
   }
-  const result = await createAdapter({ config, manifest: Object.freeze({ ...manifest }), services: pluginServices });
+  const toolPaths = await pluginToolPaths(path.dirname(manifestPath), manifest.tools);
+  const result = await createAdapter({ config, manifest: Object.freeze({ ...manifest }),
+    services: Object.freeze({ ...pluginServices, toolPaths }) });
   if (manifest.type !== 'bundle') {
     const adapter = validateAdapter(result, manifest);
     return { manifest, forums: manifest.type === 'forum' ? [adapter] : [],

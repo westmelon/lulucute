@@ -341,3 +341,64 @@ test('repository addresses reject SSH, credentials and non-GitHub destinations',
     assert.throws(() => normalizeRepository(value), /仅支持/);
   }
 });
+
+test('uninstall deletes owned tools and all backups, disables configuration and preserves external tools and other plugins', async (t) => {
+  const f = await fixture(t);
+  const installed = await managePlugin({ ...f.options, action: 'install' });
+  await mkdir(path.join(installed.directory, '.tools/aria2'), { recursive: true });
+  await writeFile(path.join(installed.directory, '.tools/aria2/aria2c'), 'owned');
+  await f.version('v2', source(2));
+  const updated = await managePlugin({ ...f.options, action: 'update', ref: 'v2' });
+  const other = path.join(f.directory, 'other');
+  await mkdir(other);
+  await writeFile(path.join(other, 'plugin.json'), JSON.stringify({ ...manifest, id: 'other' }));
+  await writeFile(path.join(other, 'index.mjs'), source(1));
+  const externalTool = path.join(f.root, 'system-aria2c');
+  await writeFile(externalTool, 'external');
+  const configPath = path.join(f.root, 'config.json');
+  const raw = { plugins: { enabled: ['other', 'sample'], options: { sample: { aria2Path: externalTool } } } };
+  await writeFile(configPath, JSON.stringify(raw));
+  const config = { plugins: { ...raw.plugins, directories: [f.directory] } };
+  const manager = new PluginManager({ config, configPath });
+  await manager.uninstall({ id: 'sample' });
+  await assert.rejects(readFile(path.join(installed.directory, 'plugin.json')), { code: 'ENOENT' });
+  await assert.rejects(readdir(path.dirname(updated.backup)), { code: 'ENOENT' });
+  assert.equal(await readFile(externalTool, 'utf8'), 'external');
+  assert.equal(await readFile(path.join(other, 'index.mjs'), 'utf8'), source(1));
+  assert.deepEqual(config.plugins.enabled, ['other']);
+  assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')), { plugins: { ...raw.plugins, enabled: ['other'] } });
+  await assert.rejects(manager.uninstall({ id: 'sample' }), /未安装/);
+  await assert.rejects(manager.uninstall({ id: '../sample' }), /ID 无效/);
+});
+
+test('uninstall restores plugin and backups when disabling configuration fails, including backup symlink rejection', async (t) => {
+  const f = await fixture(t);
+  await managePlugin({ ...f.options, action: 'install' });
+  await f.version('v2', source(2));
+  const updated = await managePlugin({ ...f.options, action: 'update', ref: 'v2' });
+  await assert.rejects(managePlugin({ ...f.options, action: 'uninstall', configPath: path.join(f.root, 'missing/config.json') }), /ENOENT/);
+  assert.equal(await readFile(path.join(updated.directory, 'index.mjs'), 'utf8'), source(2));
+  assert.equal(await readFile(path.join(updated.backup, 'index.mjs'), 'utf8'), source(1));
+  const backups = path.dirname(path.dirname(updated.backup));
+  const outside = path.join(f.root, 'external backups');
+  await mkdir(outside);
+  await rm(backups, { recursive: true });
+  await symlink(outside, backups);
+  await mkdir(path.join(outside, 'sample'));
+  await writeFile(path.join(outside, 'sample/keep'), 'external');
+  await assert.rejects(managePlugin({ ...f.options, action: 'uninstall' }), /符号链接/);
+  assert.equal(await readFile(path.join(updated.directory, 'index.mjs'), 'utf8'), source(2));
+  assert.equal(await readFile(path.join(outside, 'sample/keep'), 'utf8'), 'external');
+});
+
+test('CLI uninstall removes the enabled ID and owned files with no download root', async (t) => {
+  const f = await fixture(t);
+  await managePlugin({ ...f.options, action: 'install' });
+  const config = path.join(f.root, 'config.json');
+  await writeFile(config, JSON.stringify({ plugins: { directories: ['./installed'], enabled: ['sample'] } }));
+  const script = fileURLToPath(new URL('../scripts/plugins.mjs', import.meta.url));
+  const { stdout } = await run(process.execPath, [script, 'uninstall', 'sample', '--config', config]);
+  assert.match(stdout, /已卸载/);
+  assert.deepEqual(JSON.parse(await readFile(config, 'utf8')).plugins.enabled, []);
+  await assert.rejects(readFile(path.join(f.directory, 'sample/plugin.json')), { code: 'ENOENT' });
+});

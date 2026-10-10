@@ -447,7 +447,15 @@ async function refreshInstalledPlugins() {
       button.textContent = plugin.enabled ? '禁用' : '启用';
       button.setAttribute('aria-label', `${plugin.name || plugin.id}：${button.textContent}`);
       button.disabled = repositoryBusy || repositoryUnavailable();
-      row.append(title, details, button);
+      const uninstall = document.createElement('button');
+      uninstall.type = 'button';
+      uninstall.className = 'secondary-button';
+      uninstall.dataset.uninstallPluginId = plugin.id;
+      uninstall.dataset.pluginName = plugin.name || plugin.id;
+      uninstall.textContent = '卸载';
+      uninstall.setAttribute('aria-label', `${plugin.name || plugin.id}：卸载`);
+      uninstall.disabled = button.disabled;
+      row.append(title, details, button, uninstall);
       return row;
     }));
     elements.installedStatus.textContent = plugins.length ? `${plugins.length} 个已安装插件；更改后需重新加载服务。` : '尚未安装插件。';
@@ -472,7 +480,7 @@ function setRepositoryStatus(message, error = false) {
 function renderRepositoryPlugins() {
   elements.pluginsRestartHint.hidden = !state.pluginsRestartRequired;
   elements.serviceReload.disabled = repositoryBusy || repositoryUnavailable();
-  elements.installedPlugins.querySelectorAll('[data-enabled-plugin-id]').forEach((button) => {
+  elements.installedPlugins.querySelectorAll('[data-enabled-plugin-id], [data-uninstall-plugin-id]').forEach((button) => {
     button.disabled = repositoryBusy || repositoryUnavailable();
   });
   elements.repositoryRead.disabled = repositoryBusy || repositoryUnavailable();
@@ -561,6 +569,33 @@ document.querySelectorAll('[data-view]').forEach((button) => {
   button.addEventListener('click', () => showView(button.dataset.view));
 });
 elements.installedRefresh.addEventListener('click', refreshInstalledPlugins);
+elements.installedPlugins.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-uninstall-plugin-id]');
+  if (!button || button.disabled || repositoryBusy || repositoryUnavailable()) return;
+  requestConfirmation({ title: `卸载 ${button.dataset.pluginName}`, label: '卸载',
+    message: '将删除插件、附带工具和更新备份。已下载文件和系统安装的工具会保留。',
+    action: async () => {
+      if (repositoryBusy || repositoryUnavailable()) return;
+      pluginSettingsBusy = true;
+      renderRepositoryPlugins();
+      try {
+        const result = await api('/api/plugins/uninstall', { method: 'POST',
+          body: JSON.stringify({ id: button.dataset.uninstallPluginId }) });
+        render(result.state);
+        repositoryCatalog = undefined;
+        setRepositoryStatus('插件及附带工具已卸载，服务已重新加载。');
+        showNotice('插件及附带工具已卸载');
+      } catch (error) {
+        repositoryCatalog = undefined;
+        setRepositoryStatus(error.message, true);
+        showNotice(error.message);
+      } finally {
+        pluginSettingsBusy = false;
+        await refresh();
+        await refreshInstalledPlugins();
+      }
+    } });
+});
 elements.installedPlugins.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-enabled-plugin-id]');
   if (!button || button.disabled || repositoryBusy || repositoryUnavailable()) return;
